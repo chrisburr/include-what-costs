@@ -10,6 +10,7 @@ of include dependency graphs. The algorithm:
 
 from __future__ import annotations
 
+import cmath
 import math
 import time
 from collections.abc import Mapping, Set
@@ -50,6 +51,25 @@ def circular_median(angles: list[float], weights: list[float] | None = None) -> 
             best_cost = cost
             best_angle = candidate
     return best_angle
+
+
+def adaptive_min_gap(target_angles: list[float], n: int) -> float:
+    """Scale min_gap by how clustered the target angles are.
+
+    Uses mean resultant length R from circular statistics:
+      R ≈ 1.0 → all targets identical (no info) → large gap → fill circle
+      R ≈ 0.0 → targets spread out (real info)  → small gap → preserve clusters
+    """
+    if n <= 1:
+        return 0.0
+
+    uniform_gap = 2 * math.pi / n
+
+    # Mean resultant length
+    R = abs(sum(cmath.exp(1j * a) for a in target_angles)) / n
+
+    # Interpolate: R=0 → 0.2×uniform, R=1 → 0.95×uniform
+    return uniform_gap * (0.2 + 0.75 * R)
 
 
 def spread_with_minimum_gap(
@@ -138,9 +158,10 @@ def initial_placement(
                 angle = 0.0  # fallback
             placements.append((angle, header))
 
-        # Spread with minimum gap while preserving angular proximity
+        # Spread with adaptive min_gap based on target clustering
         n = len(placements)
-        min_gap = (2 * math.pi / n) * 0.5  # half of uniform spacing as minimum
+        target_angles = [a for a, _ in placements]
+        min_gap = adaptive_min_gap(target_angles, n)
         placements = spread_with_minimum_gap(placements, min_gap)
 
         for angle, header in placements:
@@ -177,9 +198,10 @@ def reposition_sweep(
 
             new_positions.append((target, header))
 
-        # Spread with minimum gap while preserving angular proximity
+        # Spread with adaptive min_gap based on target clustering
         n = len(new_positions)
-        min_gap = (2 * math.pi / n) * 0.5
+        target_angles = [a for a, _ in new_positions]
+        min_gap = adaptive_min_gap(target_angles, n)
         new_positions = spread_with_minimum_gap(new_positions, min_gap)
         new_order = [h for _, h in new_positions]
 
