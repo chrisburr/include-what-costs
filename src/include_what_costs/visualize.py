@@ -9,6 +9,30 @@ from pathlib import Path
 from .graph import IncludeGraph
 
 
+def _optimize_placement(
+    headers_by_depth: dict[int, list[str]],
+    child_to_parents: dict[str, set[str]],
+    edges: dict[str, set[str]],
+    max_depth: int | None = None,
+) -> dict[str, float]:
+    """Optimize node placement using spanning tree + sweep refinement.
+
+    Args:
+        headers_by_depth: Mapping from depth to list of headers.
+        child_to_parents: Mapping from child to parent headers.
+        edges: Graph edges.
+        max_depth: Only optimize rings up to this depth (None = all).
+
+    Returns:
+        Mapping from header to angle in radians.
+    """
+    from .optimizer import optimize_placement
+
+    return optimize_placement(
+        headers_by_depth, child_to_parents, edges, max_depth=max_depth
+    )
+
+
 def generate_html(
     graph: IncludeGraph,
     output_file: Path,
@@ -79,53 +103,10 @@ def generate_html(
                     child_to_parents[h].add("__root__")
                     break
 
-    # Initialize angles - start with alphabetical order
-    header_angles: dict[str, float] = {"__root__": -math.pi / 2}  # Root at top
-    for depth in sorted(headers_by_depth.keys()):
-        headers = sorted(headers_by_depth[depth])  # Alphabetical initial order
-        n_nodes = len(headers)
-        for i, header in enumerate(headers):
-            header_angles[header] = 2 * math.pi * i / n_nodes - math.pi / 2
-
-    # Iterative barycenter optimization
-    # Each node moves toward the average angle of its parents
-    for iteration in range(10):
-        moved = False
-        for depth in sorted(headers_by_depth.keys()):
-            headers = headers_by_depth[depth]
-            n_nodes = len(headers)
-
-            # Compute ideal angle for each node (average of parent angles)
-            ideal_angles: list[tuple[float, str]] = []
-            for header in headers:
-                parents = child_to_parents.get(header, set())
-                if parents:
-                    # Average angle of parents, handling wrap-around
-                    parent_angles = [header_angles[p] for p in parents if p in header_angles]
-                    if parent_angles:
-                        # Use vector averaging to handle circular mean
-                        avg_x = sum(math.cos(a) for a in parent_angles) / len(parent_angles)
-                        avg_y = sum(math.sin(a) for a in parent_angles) / len(parent_angles)
-                        ideal = math.atan2(avg_y, avg_x)
-                    else:
-                        ideal = header_angles[header]
-                else:
-                    ideal = header_angles[header]
-                ideal_angles.append((ideal, header))
-
-            # Sort by ideal angle and reassign evenly spaced positions
-            ideal_angles.sort(key=lambda x: x[0])
-            new_order = [h for _, h in ideal_angles]
-            old_order = sorted(headers, key=lambda h: header_angles[h])
-
-            if new_order != old_order:
-                moved = True
-                headers_by_depth[depth] = new_order
-                for i, header in enumerate(new_order):
-                    header_angles[header] = 2 * math.pi * i / n_nodes - math.pi / 2
-
-        if not moved:
-            break  # Converged
+    # Optimize all rings with spanning tree + sweep algorithm
+    header_angles = _optimize_placement(
+        headers_by_depth, child_to_parents, graph.edges, max_depth=None
+    )
 
     # Create network with physics disabled (we set fixed positions)
     net = Network(
