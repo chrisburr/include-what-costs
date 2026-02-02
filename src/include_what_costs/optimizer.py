@@ -52,6 +52,70 @@ def circular_median(angles: list[float], weights: list[float] | None = None) -> 
     return best_angle
 
 
+def spread_with_minimum_gap(
+    placements: list[tuple[float, str]],
+    min_gap: float,
+) -> list[tuple[float, str]]:
+    """Adjust angles to enforce minimum separation while preserving proximity.
+
+    Uses the largest gap in target angles to find the circular 'cut point',
+    then resolves overlaps linearly.
+    """
+    if len(placements) <= 1:
+        return placements
+
+    n = len(placements)
+    TWO_PI = 2 * math.pi
+
+    # Step 1: Find the largest angular gap to determine cut point
+    # This avoids splitting clusters that straddle 0/2π
+    raw_angles = sorted([a % TWO_PI for a, _ in placements])
+
+    max_gap = 0.0
+    cut_after_idx = -1
+    for i in range(n):
+        next_i = (i + 1) % n
+        gap = (raw_angles[next_i] - raw_angles[i]) % TWO_PI
+        if gap > max_gap:
+            max_gap = gap
+            cut_after_idx = i
+
+    # The cut point is in the middle of the largest gap
+    cut_angle = (raw_angles[cut_after_idx] + max_gap / 2) % TWO_PI
+
+    # Step 2: Sort by angle relative to cut point (linearizes the circle)
+    def circular_sort_key(item: tuple[float, str]) -> float:
+        return (item[0] - cut_angle) % TWO_PI
+
+    placements = sorted(placements, key=circular_sort_key)
+
+    # Step 3: Resolve overlaps - push apart nodes that are too close
+    # Work in the linearized space [cut_angle, cut_angle + 2π)
+    adjusted = [[circular_sort_key(p), p[1]] for p in placements]
+
+    # Forward pass: ensure each node is at least min_gap after previous
+    for i in range(1, n):
+        if adjusted[i][0] - adjusted[i - 1][0] < min_gap:
+            adjusted[i][0] = adjusted[i - 1][0] + min_gap
+
+    # Check if we've wrapped past 2π (overflowed the circle)
+    total_span = adjusted[-1][0] - adjusted[0][0]
+    available = TWO_PI - min_gap  # leave min_gap for the cut gap too
+
+    if total_span > available:
+        # Too many nodes / too large min_gap: spread evenly but
+        # centered on the cluster's center of mass
+        even_gap = TWO_PI / n
+        center_angle = circular_mean([a for a, _ in placements])
+        center = (center_angle - cut_angle) % TWO_PI
+        start = center - even_gap * (n - 1) / 2
+        adjusted = [[start + i * even_gap, h] for i, (_, h) in enumerate(adjusted)]
+
+    # Step 4: Convert back to absolute angles
+    result = [((a + cut_angle) % TWO_PI, h) for a, h in adjusted]
+    return result
+
+
 def initial_placement(
     headers_by_depth: dict[int, list[str]],
     child_to_parents: dict[str, set[str]],
@@ -74,11 +138,13 @@ def initial_placement(
                 angle = 0.0  # fallback
             placements.append((angle, header))
 
-        # Sort by angle, then spread evenly within ring
-        placements.sort(key=lambda x: x[0])
+        # Spread with minimum gap while preserving angular proximity
         n = len(placements)
-        for i, (_, header) in enumerate(placements):
-            header_angles[header] = 2 * math.pi * i / n - math.pi / 2
+        min_gap = (2 * math.pi / n) * 0.5  # half of uniform spacing as minimum
+        placements = spread_with_minimum_gap(placements, min_gap)
+
+        for angle, header in placements:
+            header_angles[header] = angle
 
         # Update headers_by_depth to reflect new order
         headers_by_depth[depth] = [h for _, h in placements]
@@ -111,17 +177,18 @@ def reposition_sweep(
 
             new_positions.append((target, header))
 
-        # Re-sort ring by new target angles
-        new_positions.sort(key=lambda x: x[0])
+        # Spread with minimum gap while preserving angular proximity
+        n = len(new_positions)
+        min_gap = (2 * math.pi / n) * 0.5
+        new_positions = spread_with_minimum_gap(new_positions, min_gap)
         new_order = [h for _, h in new_positions]
 
         if new_order != headers:
             moved = True
             headers_by_depth[depth] = new_order
-            # Update angles
-            n = len(new_order)
-            for i, h in enumerate(new_order):
-                header_angles[h] = 2 * math.pi * i / n - math.pi / 2
+            # Update angles from spread positions
+            for angle, h in new_positions:
+                header_angles[h] = angle
 
     return moved
 
@@ -297,7 +364,8 @@ def optimize_placement(
     # Phase 3: Adjacent swap refinement
     adjacent_swap_optimization(headers_by_depth, all_edges, header_to_depth, max_iterations=30)
 
-    # Convert final ordering back to angles
+    # Final angles: use swap-optimized order with uniform spacing
+    # (swaps optimize for crossings; respect that order)
     final_angles: dict[str, float] = {"__root__": -math.pi / 2}
     for depth, headers in headers_by_depth.items():
         n = len(headers)
