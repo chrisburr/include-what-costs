@@ -2,15 +2,13 @@
 
 import argparse
 import json
-import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
 from .benchmark import benchmark_header
 from .graph import extract_compile_flags, parse_gcc_h_output, run_gcc_h
 from .parse_header import parse_includes
-from .visualize import generate_csv, generate_dot, generate_json, generate_summary
+from .visualize import generate_csv, generate_dot, generate_html, generate_json, generate_summary
 
 
 def load_config(config_path: Path) -> dict:
@@ -120,21 +118,8 @@ def main() -> None:
 
     # Generate graph outputs
     generate_json(graph, args.output / "include_graph.json")
-    dot_file = args.output / "include_graph.dot"
-    generate_dot(graph, dot_file, args.prefix, direct_includes)
-    print("Wrote include_graph.json and include_graph.dot")
-
-    # Generate PNG and SVG using twopi (radial layout)
-    if shutil.which("twopi"):
-        for fmt in ["png", "svg"]:
-            out_file = args.output / f"include_graph.{fmt}"
-            subprocess.run(
-                ["twopi", f"-T{fmt}", str(dot_file), "-o", str(out_file)],
-                check=True,
-            )
-        print("Wrote include_graph.png and include_graph.svg")
-    else:
-        print("Note: 'twopi' not found, skipping PNG/SVG generation")
+    generate_html(graph, args.output / "include_graph.html", args.prefix, direct_includes)
+    print("Wrote include_graph.json and include_graph.html")
 
     # Benchmark headers
     results = None

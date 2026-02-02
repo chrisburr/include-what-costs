@@ -2,9 +2,164 @@
 
 import csv
 import json
+import math
+from collections import defaultdict
 from pathlib import Path
 
 from .graph import IncludeGraph
+
+
+def generate_html(
+    graph: IncludeGraph,
+    output_file: Path,
+    prefix: str | None = None,
+    direct_includes: list[str] | None = None,
+) -> None:
+    """Generate interactive HTML visualization using pyvis.
+
+    Nodes are positioned in concentric circles based on include depth.
+
+    Args:
+        graph: The include graph to visualize.
+        output_file: Path to write the HTML file.
+        prefix: Only include headers under this path prefix.
+        direct_includes: List of headers directly included by root (from parsing the file).
+    """
+    from pyvis.network import Network
+
+    # Filter headers by prefix
+    if prefix:
+        prefix_resolved = str(Path(prefix).resolve())
+        relevant = {h for h in graph.all_headers if h.startswith(prefix_resolved)}
+    else:
+        relevant = graph.all_headers
+
+    # Group headers by depth for concentric circle layout
+    headers_by_depth: dict[int, list[str]] = defaultdict(list)
+    for header in relevant:
+        depth = graph.header_depths.get(header, 1)
+        headers_by_depth[depth].append(header)
+
+    # Sort headers within each depth for consistent layout
+    for depth in headers_by_depth:
+        headers_by_depth[depth].sort()
+
+    max_depth = max(headers_by_depth.keys()) if headers_by_depth else 1
+
+    # Create network with physics disabled (we set fixed positions)
+    net = Network(
+        height="900px",
+        width="100%",
+        bgcolor="#ffffff",
+        directed=True,
+    )
+    net.toggle_physics(False)
+
+    # Calculate positions for concentric circles
+    ring_spacing = 150  # pixels between rings
+    header_to_name: dict[str, str] = {}  # full path -> display name
+
+    # Add root node at center
+    root_name = None
+    if graph.root:
+        root_name = Path(graph.root).name
+        net.add_node(
+            root_name,
+            label=root_name,
+            title=f"{graph.root}\n(root)",
+            x=0,
+            y=0,
+            fixed=True,
+            color="#87CEEB",  # light blue
+            shape="box",
+            font={"size": 12},
+        )
+
+    # Add nodes in concentric circles by depth
+    for depth in sorted(headers_by_depth.keys()):
+        headers = headers_by_depth[depth]
+        n_nodes = len(headers)
+        radius = depth * ring_spacing
+
+        for i, header in enumerate(headers):
+            # Distribute nodes evenly around the circle
+            angle = 2 * math.pi * i / n_nodes - math.pi / 2  # Start from top
+            x = radius * math.cos(angle)
+            y = radius * math.sin(angle)
+
+            name = Path(header).name
+            header_to_name[header] = name
+            count = graph.include_counts.get(header, 0)
+
+            # Color based on include count
+            if count > 10:
+                color = "#ff6b6b"  # red
+            elif count > 5:
+                color = "#ffa94d"  # orange
+            elif count > 2:
+                color = "#ffd43b"  # yellow
+            else:
+                color = "#e9ecef"  # light gray
+
+            net.add_node(
+                name,
+                label=f"{name}\n({count}x, d{depth})",
+                title=f"{header}\nIncluded {count}x\nDepth: {depth}",
+                x=x,
+                y=y,
+                fixed=True,
+                color=color,
+                shape="box",
+                font={"size": 10},
+            )
+
+    # Add edges from root to direct includes
+    root_children = direct_includes if direct_includes else graph.direct_includes
+    if root_name and root_children:
+        for child in root_children:
+            child_name = Path(child).name
+            for full_path in relevant:
+                if full_path.endswith(child) or Path(full_path).name == child_name:
+                    target_name = header_to_name.get(full_path, Path(full_path).name)
+                    try:
+                        net.add_edge(root_name, target_name, color="#888888")
+                    except Exception:
+                        pass  # Node might not exist if filtered
+                    break
+
+    # Add edges between headers
+    for parent, children in graph.edges.items():
+        if parent not in relevant:
+            continue
+        parent_name = header_to_name.get(parent)
+        if not parent_name:
+            continue
+        for child in children:
+            if child not in relevant:
+                continue
+            child_name = header_to_name.get(child)
+            if child_name:
+                try:
+                    net.add_edge(parent_name, child_name, color="#cccccc")
+                except Exception:
+                    pass  # Skip if edge already exists or nodes missing
+
+    # Configure interaction options
+    net.set_options("""
+    {
+        "interaction": {
+            "navigationButtons": true,
+            "zoomView": true,
+            "dragView": true
+        },
+        "edges": {
+            "arrows": {"to": {"enabled": true, "scaleFactor": 0.5}},
+            "smooth": {"type": "continuous"}
+        }
+    }
+    """)
+
+    net.save_graph(str(output_file))
 
 
 def generate_dot(
@@ -23,6 +178,8 @@ def generate_dot(
                         If None, uses graph.direct_includes (which may be incomplete due to
                         gcc -H not showing headers at depth 1 if already included deeper).
     """
+    from collections import defaultdict
+
     # Filter headers by prefix
     if prefix:
         prefix_resolved = str(Path(prefix).resolve())
@@ -36,11 +193,21 @@ def generate_dot(
     else:
         relevant = graph.all_headers
 
+    # Group headers by depth for ring layout
+    headers_by_depth: dict[int, list[str]] = defaultdict(list)
+    for header in relevant:
+        depth = graph.header_depths.get(header, 1)
+        headers_by_depth[depth].append(header)
+
+    max_depth = max(headers_by_depth.keys()) if headers_by_depth else 1
+    print(f"Include depths: 1 to {max_depth} (headers per ring: {', '.join(f'd{d}={len(headers_by_depth[d])}' for d in sorted(headers_by_depth.keys())[:5])}...)")
+
     with open(output_file, "w") as f:
         f.write("digraph includes {\n")
         # Use radial layout settings (rendered with twopi)
         f.write("  overlap=false;\n")
         f.write("  splines=true;\n")
+        f.write("  ranksep=1.5;\n")  # Space between rings
         f.write("  node [shape=box, fontsize=10];\n")
 
         # Add root header as entry point (if set and matches prefix)
@@ -53,23 +220,28 @@ def generate_dot(
                 f'shape=doubleoctagon, label="{root_name}\\n(root)"];\n'
             )
 
-        # Write nodes with color based on include count
-        for header in relevant:
-            count = graph.include_counts.get(header, 0)
-            if count > 10:
-                color = "red"
-            elif count > 5:
-                color = "orange"
-            elif count > 2:
-                color = "yellow"
-            else:
-                color = "white"
+        # Write nodes grouped by depth using subgraphs with rank=same
+        for depth in sorted(headers_by_depth.keys()):
+            headers = headers_by_depth[depth]
+            f.write(f"  subgraph depth_{depth} {{\n")
+            f.write("    rank=same;\n")
+            for header in headers:
+                count = graph.include_counts.get(header, 0)
+                if count > 10:
+                    color = "red"
+                elif count > 5:
+                    color = "orange"
+                elif count > 2:
+                    color = "yellow"
+                else:
+                    color = "white"
 
-            name = Path(header).name
-            f.write(
-                f'  "{name}" [fillcolor={color}, style=filled, '
-                f'label="{name}\\n({count}x)"];\n'
-            )
+                name = Path(header).name
+                f.write(
+                    f'    "{name}" [fillcolor={color}, style=filled, '
+                    f'label="{name}\\n({count}x, d{depth})"];\n'
+                )
+            f.write("  }\n")
 
         # Write edges from root to direct includes
         # Use provided direct_includes (parsed from file) or fall back to graph.direct_includes

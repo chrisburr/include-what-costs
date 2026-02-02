@@ -15,6 +15,7 @@ class IncludeGraph:
     edges: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
     include_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     all_headers: set[str] = field(default_factory=set)
+    header_depths: dict[str, int] = field(default_factory=dict)  # Min depth for each header
     root: str | None = None  # The root header file being analyzed
     direct_includes: set[str] = field(default_factory=set)  # Depth-1 includes from root
 
@@ -135,6 +136,10 @@ def parse_gcc_h_output(output: str) -> IncludeGraph:
 
             graph.include_counts[header] += 1
             graph.all_headers.add(header)
+
+            # Track minimum depth at which this header is first included
+            if header not in graph.header_depths:
+                graph.header_depths[header] = depth
 
             # Track direct includes (depth 1 = directly included by root)
             if depth == 1:
