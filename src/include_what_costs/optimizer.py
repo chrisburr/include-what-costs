@@ -259,6 +259,7 @@ def adjacent_swap_optimization(
     edges: Mapping[str, Set[str]],
     header_to_depth: dict[str, int],
     max_iterations: int = 50,
+    verbose: bool = False,
 ) -> bool:
     """Swap adjacent nodes if it reduces crossings.
 
@@ -267,13 +268,14 @@ def adjacent_swap_optimization(
         edges: Graph edges.
         header_to_depth: Mapping from header to depth.
         max_iterations: Maximum optimization iterations.
+        verbose: Print progress during optimization.
 
     Returns:
         True if any improvement was made.
     """
     any_improvement = False
 
-    for _ in range(max_iterations):
+    for iteration in range(max_iterations):
         improved = False
         for depth, headers in headers_by_depth.items():
             n = len(headers)
@@ -295,7 +297,13 @@ def adjacent_swap_optimization(
                     any_improvement = True
 
         if not improved:
+            if verbose:
+                crossings = count_crossings(headers_by_depth, edges, header_to_depth)
+                print(f"    Converged after {iteration + 1} iterations ({crossings} crossings)")
             break
+        elif verbose and (iteration + 1) % 5 == 0:
+            crossings = count_crossings(headers_by_depth, edges, header_to_depth)
+            print(f"    Iteration {iteration + 1}: {crossings} crossings")
 
     return any_improvement
 
@@ -355,14 +363,22 @@ def optimize_placement(
     # Phase 1: Initial placement - circular median of parents
     header_angles: dict[str, float] = {}
     initial_placement(headers_by_depth, child_to_parents, header_angles)
+    print("  Initial placement done")
 
     # Phase 2: Iterative all-neighbors repositioning (10 passes)
-    for _ in range(10):
+    for i in range(10):
         if not reposition_sweep(headers_by_depth, all_edges, child_to_parents, header_angles):
+            print(f"  Repositioning converged after {i + 1} passes")
             break
+    else:
+        print("  Repositioning done (10 passes)")
 
     # Phase 3: Adjacent swap refinement
-    adjacent_swap_optimization(headers_by_depth, all_edges, header_to_depth, max_iterations=30)
+    crossings_before = count_crossings(headers_by_depth, all_edges, header_to_depth)
+    print(f"  Swap refinement starting ({crossings_before} crossings)...")
+    adjacent_swap_optimization(
+        headers_by_depth, all_edges, header_to_depth, max_iterations=30, verbose=True
+    )
 
     # Final angles: use swap-optimized order with uniform spacing
     # (swaps optimize for crossings; respect that order)
