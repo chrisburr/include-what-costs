@@ -77,8 +77,22 @@ def generate_html(
     net.toggle_physics(False)
 
     # Calculate positions for concentric circles
-    ring_spacing = 150  # pixels between rings
+    min_node_spacing = 80  # minimum pixels between adjacent nodes on a ring
+    min_ring_gap = 100  # minimum gap between rings
     header_to_name: dict[str, str] = {}  # full path -> display name
+
+    # Pre-calculate radii for each depth to ensure nodes aren't too dense
+    # Radius must be large enough that arc length between nodes >= min_node_spacing
+    # Arc length = 2 * pi * radius / n_nodes >= min_node_spacing
+    # Therefore: radius >= n_nodes * min_node_spacing / (2 * pi)
+    ring_radii: dict[int, float] = {}
+    current_radius = 0.0
+    for depth in sorted(headers_by_depth.keys()):
+        n_nodes = len(headers_by_depth[depth])
+        min_radius_for_spacing = n_nodes * min_node_spacing / (2 * math.pi)
+        # Radius must be at least min_ring_gap more than previous ring
+        ring_radii[depth] = max(current_radius + min_ring_gap, min_radius_for_spacing)
+        current_radius = ring_radii[depth]
 
     # Add root node at center
     root_name = None
@@ -100,7 +114,7 @@ def generate_html(
     for depth in sorted(headers_by_depth.keys()):
         headers = headers_by_depth[depth]
         n_nodes = len(headers)
-        radius = depth * ring_spacing
+        radius = ring_radii[depth]
 
         for i, header in enumerate(headers):
             # Distribute nodes evenly around the circle
