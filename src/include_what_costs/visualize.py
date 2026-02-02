@@ -11,6 +11,7 @@ def generate_dot(
     graph: IncludeGraph,
     output_file: Path,
     prefix: str | None = None,
+    direct_includes: list[str] | None = None,
 ) -> None:
     """Generate Graphviz DOT file from include graph.
 
@@ -18,6 +19,9 @@ def generate_dot(
         graph: The include graph to visualize.
         output_file: Path to write the DOT file.
         prefix: Only include headers under this path prefix.
+        direct_includes: List of headers directly included by root (from parsing the file).
+                        If None, uses graph.direct_includes (which may be incomplete due to
+                        gcc -H not showing headers at depth 1 if already included deeper).
     """
     # Filter headers by prefix
     if prefix:
@@ -65,11 +69,18 @@ def generate_dot(
             )
 
         # Write edges from root to direct includes
-        if root_name and graph.direct_includes:
-            for child in graph.direct_includes:
-                if child in relevant:
-                    child_name = Path(child).name
-                    f.write(f'  "{root_name}" -> "{child_name}";\n')
+        # Use provided direct_includes (parsed from file) or fall back to graph.direct_includes
+        root_children = direct_includes if direct_includes else graph.direct_includes
+        if root_name and root_children:
+            for child in root_children:
+                # direct_includes from parse_includes() are relative (e.g., "Functors/Adapters.h")
+                # We need to find matching full paths in relevant
+                child_name = Path(child).name
+                # Check if any relevant header ends with this include path
+                for full_path in relevant:
+                    if full_path.endswith(child) or Path(full_path).name == child_name:
+                        f.write(f'  "{root_name}" -> "{Path(full_path).name}";\n')
+                        break
 
         # Write edges between headers
         for parent, children in graph.edges.items():

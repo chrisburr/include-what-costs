@@ -115,10 +115,13 @@ def main() -> None:
     graph.root = str(args.root)  # Store root header path
     print(f"Found {len(graph.all_headers)} unique headers")
 
+    # Parse direct includes from root header file (more accurate than gcc -H depth tracking)
+    direct_includes = parse_includes(args.root)
+
     # Generate graph outputs
     generate_json(graph, args.output / "include_graph.json")
     dot_file = args.output / "include_graph.dot"
-    generate_dot(graph, dot_file, args.prefix)
+    generate_dot(graph, dot_file, args.prefix, direct_includes)
     print("Wrote include_graph.json and include_graph.dot")
 
     # Generate PNG and SVG if dot is available

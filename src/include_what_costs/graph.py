@@ -92,12 +92,18 @@ def run_gcc_h(
     gcc_cmd = f"g++ -H -E -std={cxx_std} {compile_flags} {header_path}"
     if wrapper:
         # Wrap the gcc command in bash -c so the wrapper correctly passes all arguments
-        # Add 2>&1 to capture -H output which goes to stderr
+        # Redirect stderr to a temp file to avoid mixing with stdout
         import shlex
-        gcc_cmd_with_redirect = f"{gcc_cmd} 2>&1"
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.stderr', delete=False) as f:
+            stderr_file = f.name
+        gcc_cmd_with_redirect = f"{gcc_cmd} 2>{stderr_file}"
         cmd = f"{wrapper} bash -c {shlex.quote(gcc_cmd_with_redirect)}"
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        return result.stdout  # With 2>&1, all output goes to stdout
+        subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        with open(stderr_file) as f:
+            stderr_output = f.read()
+        Path(stderr_file).unlink()  # Clean up temp file
+        return stderr_output
     else:
         result = subprocess.run(gcc_cmd, shell=True, capture_output=True, text=True)
         return result.stderr
