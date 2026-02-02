@@ -15,6 +15,8 @@ class IncludeGraph:
     edges: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
     include_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     all_headers: set[str] = field(default_factory=set)
+    root: str | None = None  # The root header file being analyzed
+    direct_includes: set[str] = field(default_factory=set)  # Depth-1 includes from root
 
 
 def extract_compile_flags(
@@ -112,6 +114,10 @@ def parse_gcc_h_output(output: str) -> IncludeGraph:
 
             graph.include_counts[header] += 1
             graph.all_headers.add(header)
+
+            # Track direct includes (depth 1 = directly included by root)
+            if depth == 1:
+                graph.direct_includes.add(header)
 
             # Pop stack to get to parent level
             while len(stack) >= depth:

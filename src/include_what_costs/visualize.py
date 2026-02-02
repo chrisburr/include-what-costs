@@ -10,30 +10,68 @@ from .graph import IncludeGraph
 def generate_dot(
     graph: IncludeGraph,
     output_file: Path,
-    focus_pattern: str | None = None,
+    focus_patterns: list[str] | None = None,
     max_nodes: int = 200,
+    focus_depth: int = 1,
 ) -> None:
     """Generate Graphviz DOT file from include graph.
 
     Args:
         graph: The include graph to visualize.
         output_file: Path to write the DOT file.
-        focus_pattern: If provided, only include headers matching this pattern.
+        focus_patterns: If provided, only include headers matching any of these patterns
+                        plus children up to focus_depth levels deep.
         max_nodes: Maximum number of nodes to include (most-included first).
+        focus_depth: How many levels of children to include beyond focused headers.
     """
+    def get_children(h: str, depth: int, visited: set[str] | None = None) -> set[str]:
+        """Get children of a header up to a certain depth."""
+        if visited is None:
+            visited = set()
+        if depth <= 0 or h in visited:
+            return set()
+        visited.add(h)
+        children = set()
+        for child in graph.edges.get(h, set()):
+            children.add(child)
+            if depth > 1:
+                children.update(get_children(child, depth - 1, visited))
+        return children
+
     # Determine which headers to include
-    if focus_pattern:
-        relevant = {
-            h for h in graph.all_headers if focus_pattern.lower() in h.lower()
-        }
+    if focus_patterns:
+        # Find headers matching any of the patterns
+        focused = set()
+        for pattern in focus_patterns:
+            pattern_lower = pattern.lower()
+            for h in graph.all_headers:
+                if pattern_lower in h.lower():
+                    focused.add(h)
+
+        # Include focused headers plus their children up to focus_depth
+        relevant = set(focused)
+        for h in focused:
+            relevant.update(get_children(h, focus_depth))
     else:
         sorted_headers = sorted(graph.include_counts.items(), key=lambda x: -x[1])
         relevant = {h for h, _ in sorted_headers[:max_nodes]}
+
+    # Always include direct includes from root so the graph is connected
+    relevant.update(graph.direct_includes)
 
     with open(output_file, "w") as f:
         f.write("digraph includes {\n")
         f.write("  rankdir=TB;\n")
         f.write("  node [shape=box, fontsize=10];\n")
+
+        # Add root header as entry point (if set)
+        root_name = None
+        if graph.root:
+            root_name = Path(graph.root).name
+            f.write(
+                f'  "{root_name}" [fillcolor=lightblue, style=filled, '
+                f'shape=doubleoctagon, label="{root_name}\\n(root)"];\n'
+            )
 
         # Write nodes with color based on include count
         for header in relevant:
@@ -53,7 +91,14 @@ def generate_dot(
                 f'label="{name}\\n({count}x)"];\n'
             )
 
-        # Write edges
+        # Write edges from root to direct includes
+        if root_name and graph.direct_includes:
+            for child in graph.direct_includes:
+                if child in relevant:
+                    child_name = Path(child).name
+                    f.write(f'  "{root_name}" -> "{child_name}";\n')
+
+        # Write edges between headers
         for parent, children in graph.edges.items():
             if parent not in relevant:
                 continue
@@ -74,16 +119,22 @@ def generate_json(graph: IncludeGraph, output_file: Path) -> None:
         graph: The include graph to analyze.
         output_file: Path to write the JSON file.
     """
-    # Compute transitive dependencies
+    # Compute transitive dependencies (handling cycles)
     cache: dict[str, set[str]] = {}
+    visiting: set[str] = set()  # Track current path to detect cycles
 
     def get_deps(h: str) -> set[str]:
         if h in cache:
             return cache[h]
+        if h in visiting:
+            # Cycle detected, return empty to break recursion
+            return set()
+        visiting.add(h)
         deps: set[str] = set()
         for c in graph.edges.get(h, set()):
             deps.add(c)
             deps.update(get_deps(c))
+        visiting.discard(h)
         cache[h] = deps
         return deps
 

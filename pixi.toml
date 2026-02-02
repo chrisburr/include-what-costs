@@ -1,4 +1,4 @@
-[project]
+[workspace]
 name = "include-what-costs"
 version = "0.1.0"
 description = "Analyze C++ header dependencies and compile-time costs"
@@ -7,6 +7,8 @@ platforms = ["linux-64"]
 
 [dependencies]
 python = ">=3.10"
+graphviz = ">=14.1.2,<15"
+prmon = ">=3.2.0,<4"
 
 [pypi-dependencies]
 include-what-costs = { path = ".", editable = true }
@@ -16,6 +18,3 @@ pyyaml = "*"
 
 [environments]
 default = { features = ["yaml"], solve-group = "default" }
-
-[tasks]
-include-what-costs = "include-what-costs"
