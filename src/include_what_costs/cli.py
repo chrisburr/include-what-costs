@@ -124,17 +124,17 @@ def main() -> None:
     generate_dot(graph, dot_file, args.prefix, direct_includes)
     print("Wrote include_graph.json and include_graph.dot")
 
-    # Generate PNG and SVG if dot is available
-    if shutil.which("dot"):
+    # Generate PNG and SVG using twopi (radial layout)
+    if shutil.which("twopi"):
         for fmt in ["png", "svg"]:
             out_file = args.output / f"include_graph.{fmt}"
             subprocess.run(
-                ["dot", f"-T{fmt}", str(dot_file), "-o", str(out_file)],
+                ["twopi", f"-T{fmt}", str(dot_file), "-o", str(out_file)],
                 check=True,
             )
         print("Wrote include_graph.png and include_graph.svg")
     else:
-        print("Note: 'dot' not found, skipping PNG/SVG generation")
+        print("Note: 'twopi' not found, skipping PNG/SVG generation")
 
     # Benchmark headers
     results = None

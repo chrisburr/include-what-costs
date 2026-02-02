@@ -38,15 +38,18 @@ def generate_dot(
 
     with open(output_file, "w") as f:
         f.write("digraph includes {\n")
-        f.write("  rankdir=TB;\n")
+        # Use radial layout settings (rendered with twopi)
+        f.write("  overlap=false;\n")
+        f.write("  splines=true;\n")
         f.write("  node [shape=box, fontsize=10];\n")
 
         # Add root header as entry point (if set and matches prefix)
         root_name = None
         if graph.root:
             root_name = Path(graph.root).name
+            # Mark as root for twopi radial layout
             f.write(
-                f'  "{root_name}" [fillcolor=lightblue, style=filled, '
+                f'  "{root_name}" [root=true, fillcolor=lightblue, style=filled, '
                 f'shape=doubleoctagon, label="{root_name}\\n(root)"];\n'
             )
 
