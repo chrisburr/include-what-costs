@@ -1,0 +1,17 @@
+# Example configuration for LHCb JIT_includes.h analysis
+#
+# Usage:
+#   cd ~/stack
+#   ./Rec/run include-what-costs --config include-what-costs/examples/lhcb_config.yaml
+#
+# Before running, clean caches:
+#   find . -name 'lib*FunctorCache_*' -print -delete
+#   find . -name 'JIT_includes.h.gch' -print -delete
+#   make fast/Rec
+
+root: Rec/Phys/FunctorCore/include/Functors/JIT_includes.h
+compile-commands: Rec/build.x86_64_v3-el9-gcc13-opt/compile_commands.json
+prmon: /cvmfs/lhcb.cern.ch/lhcbdirac/versions/v12.0.0-1761556625/Linux-x86_64/bin/prmon
+output: results/
+source-pattern: FunctorCore
+focus: Functors

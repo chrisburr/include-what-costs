@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "include-what-costs"
+version = "0.1.0"
+description = "Analyze C++ header dependencies and compile-time costs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["pyyaml"]
+
+[project.scripts]
+include-what-costs = "include_what_costs.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/include_what_costs"]

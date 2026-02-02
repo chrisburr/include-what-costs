@@ -1,0 +1,21 @@
+[project]
+name = "include-what-costs"
+version = "0.1.0"
+description = "Analyze C++ header dependencies and compile-time costs"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = ">=3.10"
+
+[pypi-dependencies]
+include-what-costs = { path = ".", editable = true }
+
+[feature.yaml.pypi-dependencies]
+pyyaml = "*"
+
+[environments]
+default = { features = ["yaml"], solve-group = "default" }
+
+[tasks]
+include-what-costs = "include-what-costs"
