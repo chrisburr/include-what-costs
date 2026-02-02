@@ -1,137 +1,129 @@
-"""Spanning Tree + Sweep Refinement algorithm for node placement in visualizations.
+"""Circular Median + All-Neighbors algorithm for node placement in visualizations.
 
 This module implements a graph layout algorithm optimized for radial visualization
 of include dependency graphs. The algorithm:
 
-1. Extracts a spanning tree from the DAG by BFS
-2. Assigns each subtree a contiguous angular wedge (crossing-free for tree edges)
-3. Optimizes placement for non-tree edges using local swaps and Sugiyama-style sweeping
+1. Places each node at the circular median of ALL its parents' angles
+2. Iteratively repositions nodes toward circular median of ALL neighbors (parents + children)
+3. Refines placement with local swap optimization
 """
 
 from __future__ import annotations
 
 import math
-from collections import deque
+import time
 from collections.abc import Mapping, Set
 
 
-def extract_spanning_tree(
-    root: str,
-    edges: Mapping[str, Set[str]],
+def circular_distance(a: float, b: float) -> float:
+    """Compute shortest angular distance between two angles (in radians)."""
+    d = abs(a - b) % (2 * math.pi)
+    return min(d, 2 * math.pi - d)
+
+
+def circular_mean(angles: list[float], weights: list[float] | None = None) -> float:
+    """Compute circular mean using vector averaging."""
+    if not angles:
+        return 0.0
+    if weights is None:
+        weights = [1.0] * len(angles)
+    total_weight = sum(weights)
+    if total_weight == 0:
+        return 0.0
+    avg_x = sum(w * math.cos(a) for a, w in zip(angles, weights)) / total_weight
+    avg_y = sum(w * math.sin(a) for a, w in zip(angles, weights)) / total_weight
+    return math.atan2(avg_y, avg_x)
+
+
+def circular_median(angles: list[float], weights: list[float] | None = None) -> float:
+    """Find angle that minimizes weighted circular distance to all input angles."""
+    if not angles:
+        return 0.0
+    if weights is None:
+        weights = [1.0] * len(angles)
+    # Test at each candidate angle (only need to test at input angles)
+    best_angle = angles[0]
+    best_cost = float("inf")
+    for candidate in angles:
+        cost = sum(w * circular_distance(candidate, a) for a, w in zip(angles, weights))
+        if cost < best_cost:
+            best_cost = cost
+            best_angle = candidate
+    return best_angle
+
+
+def initial_placement(
     headers_by_depth: dict[int, list[str]],
-) -> dict[str, str]:
-    """Extract a spanning tree by BFS, assigning each node a single primary parent.
-
-    Args:
-        root: Root node identifier (e.g., "__root__").
-        edges: Graph edges mapping parent -> children.
-        headers_by_depth: Mapping from depth to list of headers at that depth.
-
-    Returns:
-        Mapping from each header to its primary parent in the spanning tree.
-    """
-    primary_parent: dict[str, str] = {}
-    visited: set[str] = set()
-    queue: deque[str] = deque([root])
-
-    while queue:
-        node = queue.popleft()
-        if node in visited:
-            continue
-        visited.add(node)
-
-        for child in edges.get(node, []):
-            if child not in primary_parent:
-                primary_parent[child] = node
-            if child not in visited:
-                queue.append(child)
-
-    return primary_parent
-
-
-def compute_subtree_sizes(
-    node: str,
-    edges: Mapping[str, Set[str]],
-    primary_parent: dict[str, str],
-    cache: dict[str, int] | None = None,
-) -> int:
-    """Count descendants in the spanning tree (including the node itself).
-
-    Args:
-        node: Node to compute size for.
-        edges: Graph edges mapping parent -> children.
-        primary_parent: Mapping from child to its primary parent in spanning tree.
-        cache: Optional cache dict for memoization.
-
-    Returns:
-        Number of nodes in subtree rooted at this node.
-    """
-    if cache is None:
-        cache = {}
-
-    if node in cache:
-        return cache[node]
-
-    children = [c for c in edges.get(node, []) if primary_parent.get(c) == node]
-    size = 1 + sum(
-        compute_subtree_sizes(c, edges, primary_parent, cache) for c in children
-    )
-    cache[node] = size
-    return size
-
-
-def layout_tree(
-    node: str,
-    edges: Mapping[str, Set[str]],
-    primary_parent: dict[str, str],
-    start_angle: float,
-    end_angle: float,
+    child_to_parents: dict[str, set[str]],
     header_angles: dict[str, float],
-    size_cache: dict[str, int],
 ) -> None:
-    """Recursively assign angles using angular wedges proportional to subtree size.
+    """Place each node at circular median of its parents' angles."""
+    header_angles["__root__"] = -math.pi / 2
 
-    This ensures children of the same parent are contiguous on their ring,
-    producing zero crossings for tree edges.
+    for depth in sorted(headers_by_depth.keys()):
+        headers = headers_by_depth[depth]
+        placements: list[tuple[float, str]] = []
 
-    Args:
-        node: Current node being laid out.
-        edges: Graph edges mapping parent -> children.
-        primary_parent: Mapping from child to its primary parent.
-        start_angle: Start of angular wedge for this subtree.
-        end_angle: End of angular wedge for this subtree.
-        header_angles: Output dict mapping headers to angles (modified in place).
-        size_cache: Cache of subtree sizes.
-    """
-    # Place this node at center of its wedge
-    header_angles[node] = (start_angle + end_angle) / 2
+        for header in headers:
+            parents = child_to_parents.get(header, set())
+            parent_angles = [header_angles[p] for p in parents if p in header_angles]
 
-    # Get children in the spanning tree (nodes whose primary parent is this node)
-    children = [c for c in edges.get(node, []) if primary_parent.get(c) == node]
-    if not children:
-        return
+            if parent_angles:
+                angle = circular_median(parent_angles)
+            else:
+                angle = 0.0  # fallback
+            placements.append((angle, header))
 
-    # Compute sizes for proportional wedge division
-    sizes = [compute_subtree_sizes(c, edges, primary_parent, size_cache) for c in children]
-    total = sum(sizes)
+        # Sort by angle, then spread evenly within ring
+        placements.sort(key=lambda x: x[0])
+        n = len(placements)
+        for i, (_, header) in enumerate(placements):
+            header_angles[header] = 2 * math.pi * i / n - math.pi / 2
 
-    if total == 0:
-        return
+        # Update headers_by_depth to reflect new order
+        headers_by_depth[depth] = [h for _, h in placements]
 
-    # Divide wedge proportionally by subtree size
-    current_angle = start_angle
-    for child, size in zip(children, sizes):
-        wedge = (end_angle - start_angle) * size / total
-        layout_tree(
-            child,
-            edges,
-            primary_parent,
-            current_angle,
-            current_angle + wedge,
-            header_angles,
-            size_cache,
-        )
-        current_angle += wedge
+
+def reposition_sweep(
+    headers_by_depth: dict[int, list[str]],
+    edges: Mapping[str, Set[str]],
+    child_to_parents: dict[str, set[str]],
+    header_angles: dict[str, float],
+) -> bool:
+    """One sweep pass: reposition each node toward its neighbors."""
+    moved = False
+
+    for depth in sorted(headers_by_depth.keys()):
+        headers = headers_by_depth[depth]
+        new_positions: list[tuple[float, str]] = []
+
+        for header in headers:
+            # Collect ALL neighbors (parents + children)
+            neighbors = set(child_to_parents.get(header, set()))
+            neighbors.update(edges.get(header, set()))
+
+            neighbor_angles = [header_angles[n] for n in neighbors if n in header_angles]
+
+            if neighbor_angles:
+                target = circular_median(neighbor_angles)
+            else:
+                target = header_angles[header]
+
+            new_positions.append((target, header))
+
+        # Re-sort ring by new target angles
+        new_positions.sort(key=lambda x: x[0])
+        new_order = [h for _, h in new_positions]
+
+        if new_order != headers:
+            moved = True
+            headers_by_depth[depth] = new_order
+            # Update angles
+            n = len(new_order)
+            for i, h in enumerate(new_order):
+                header_angles[h] = 2 * math.pi * i / n - math.pi / 2
+
+    return moved
 
 
 def count_crossings(
@@ -241,133 +233,18 @@ def adjacent_swap_optimization(
     return any_improvement
 
 
-def compute_barycenter(
-    header: str,
-    neighbor_positions: list[int],
-    ring_size: int,
-) -> float:
-    """Compute barycenter (average position) of a node's neighbors.
-
-    Args:
-        header: The header to compute barycenter for.
-        neighbor_positions: Positions of neighbors on adjacent ring.
-        ring_size: Size of the ring the neighbors are on.
-
-    Returns:
-        Average position (barycenter) as a float.
-    """
-    if not neighbor_positions:
-        return 0.0
-    return sum(neighbor_positions) / len(neighbor_positions)
-
-
-def optimize_ring_order(
-    ring_headers: list[str],
-    fixed_ring_headers: list[str],
-    edges: Mapping[str, Set[str]],
-    child_to_parents: dict[str, set[str]],
-    is_outward: bool,
-) -> list[str]:
-    """Reorder nodes on a ring using barycenter heuristic.
-
-    Args:
-        ring_headers: Headers on the ring to optimize (will be reordered).
-        fixed_ring_headers: Headers on the adjacent fixed ring.
-        edges: Parent -> children edges.
-        child_to_parents: Child -> parents mapping.
-        is_outward: True if fixed ring is parent (outward sweep), False if child (inward).
-
-    Returns:
-        Reordered list of headers.
-    """
-    # Build position map for fixed ring
-    fixed_positions = {h: i for i, h in enumerate(fixed_ring_headers)}
-
-    # Compute barycenter for each header on the ring being optimized
-    barycenters: list[tuple[float, str]] = []
-    for header in ring_headers:
-        if is_outward:
-            # Fixed ring is parents, get positions of parents
-            neighbors = child_to_parents.get(header, set())
-        else:
-            # Fixed ring is children, get positions of children
-            neighbors = edges.get(header, set())
-
-        neighbor_positions = [
-            fixed_positions[n] for n in neighbors if n in fixed_positions
-        ]
-
-        if neighbor_positions:
-            bc = compute_barycenter(header, neighbor_positions, len(fixed_ring_headers))
-        else:
-            # No neighbors on fixed ring, keep relative position
-            bc = ring_headers.index(header)
-
-        barycenters.append((bc, header))
-
-    # Sort by barycenter
-    barycenters.sort(key=lambda x: x[0])
-    return [h for _, h in barycenters]
-
-
-def sugiyama_sweeps(
-    headers_by_depth: dict[int, list[str]],
-    edges: Mapping[str, Set[str]],
-    child_to_parents: dict[str, set[str]],
-    num_passes: int = 5,
-) -> None:
-    """Perform Sugiyama-style barycenter sweeps to reduce crossings.
-
-    Alternates between outward sweeps (ring 1 -> N) and inward sweeps (ring N -> 1).
-
-    Args:
-        headers_by_depth: Headers organized by depth (modified in place).
-        edges: Parent -> children edges.
-        child_to_parents: Child -> parents mapping.
-        num_passes: Number of full sweep passes.
-    """
-    depths = sorted(headers_by_depth.keys())
-    if len(depths) < 2:
-        return
-
-    for _ in range(num_passes):
-        # Outward sweep: optimize each ring based on previous ring (parents)
-        for i, depth in enumerate(depths[1:], start=1):
-            prev_depth = depths[i - 1]
-            headers_by_depth[depth] = optimize_ring_order(
-                headers_by_depth[depth],
-                headers_by_depth[prev_depth],
-                edges,
-                child_to_parents,
-                is_outward=True,
-            )
-
-        # Inward sweep: optimize each ring based on next ring (children)
-        for i in range(len(depths) - 2, -1, -1):
-            depth = depths[i]
-            next_depth = depths[i + 1]
-            headers_by_depth[depth] = optimize_ring_order(
-                headers_by_depth[depth],
-                headers_by_depth[next_depth],
-                edges,
-                child_to_parents,
-                is_outward=False,
-            )
-
-
 def optimize_placement(
     headers_by_depth: dict[int, list[str]],
     child_to_parents: dict[str, set[str]],
     edges: Mapping[str, Set[str]],
     max_depth: int | None = None,
 ) -> dict[str, float]:
-    """Optimize node placement using spanning tree + sweep refinement.
+    """Optimize node placement using circular median + all-neighbors repositioning.
 
     This is the main entry point. The algorithm:
-    1. Extracts a spanning tree via BFS
-    2. Assigns contiguous angular wedges based on subtree size
-    3. Refines placement with Sugiyama-style sweeps
-    4. Further refines with adjacent swap optimization
+    1. Places each node at circular median of ALL its parents' angles
+    2. Iteratively repositions nodes toward circular median of ALL neighbors
+    3. Refines with adjacent swap optimization
 
     Args:
         headers_by_depth: Mapping from depth to list of headers at that depth.
@@ -387,7 +264,8 @@ def optimize_placement(
         headers_by_depth = {d: list(h) for d, h in headers_by_depth.items()}
 
     total_nodes = sum(len(headers) for headers in headers_by_depth.values())
-    print(f"Running spanning tree + sweep optimization for {total_nodes} nodes...")
+    print(f"Running circular median + all-neighbors optimization for {total_nodes} nodes...")
+    start_time = time.perf_counter()
 
     # Build header-to-depth mapping
     header_to_depth: dict[str, int] = {}
@@ -407,36 +285,16 @@ def optimize_placement(
                 all_edges["__root__"] = set()
             all_edges["__root__"].add(h)
 
-    # Phase 1: Extract spanning tree via BFS from root
-    primary_parent = extract_spanning_tree("__root__", all_edges, headers_by_depth)
-
-    # Phase 2: Compute subtree sizes and assign angular wedges
+    # Phase 1: Initial placement - circular median of parents
     header_angles: dict[str, float] = {}
-    size_cache: dict[str, int] = {}
+    initial_placement(headers_by_depth, child_to_parents, header_angles)
 
-    # Start with root at top (-pi/2)
-    header_angles["__root__"] = -math.pi / 2
+    # Phase 2: Iterative all-neighbors repositioning (10 passes)
+    for _ in range(10):
+        if not reposition_sweep(headers_by_depth, all_edges, child_to_parents, header_angles):
+            break
 
-    # Layout tree from root with full circle (0 to 2*pi)
-    layout_tree(
-        "__root__",
-        all_edges,
-        primary_parent,
-        start_angle=0,
-        end_angle=2 * math.pi,
-        header_angles=header_angles,
-        size_cache=size_cache,
-    )
-
-    # Convert angles to ring ordering
-    for depth, headers in headers_by_depth.items():
-        # Sort headers by their assigned angles
-        headers.sort(key=lambda h: header_angles.get(h, 0))
-
-    # Phase 3: Sugiyama-style sweeps to optimize for non-tree edges
-    sugiyama_sweeps(headers_by_depth, all_edges, child_to_parents, num_passes=5)
-
-    # Phase 4: Local swap refinement
+    # Phase 3: Adjacent swap refinement
     adjacent_swap_optimization(headers_by_depth, all_edges, header_to_depth, max_iterations=30)
 
     # Convert final ordering back to angles
@@ -447,6 +305,7 @@ def optimize_placement(
             final_angles[h] = 2 * math.pi * i / n - math.pi / 2
 
     crossings = count_crossings(headers_by_depth, all_edges, header_to_depth)
-    print(f"Optimization complete: {total_nodes} nodes, {crossings} crossings")
+    elapsed = time.perf_counter() - start_time
+    print(f"Optimization complete: {total_nodes} nodes, {crossings} crossings ({elapsed:.2f}s)")
 
     return final_angles
