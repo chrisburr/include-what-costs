@@ -20,13 +20,14 @@ class IncludeGraph:
 
 
 def extract_compile_flags(
-    compile_commands_path: Path, source_pattern: str | None = None
+    compile_commands_path: Path,
+    root_header: Path,
 ) -> str:
     """Extract -I, -D, -isystem flags from compile_commands.json.
 
     Args:
         compile_commands_path: Path to compile_commands.json.
-        source_pattern: Optional pattern to match source file names.
+        root_header: Root header path to auto-detect which source file's flags to use.
 
     Returns:
         Space-separated string of compiler flags.
@@ -36,6 +37,15 @@ def extract_compile_flags(
     """
     with open(compile_commands_path) as f:
         commands = json.load(f)
+
+    # Auto-detect source pattern from root header path
+    # Extract component name from path like .../Phys/FunctorCore/include/...
+    source_pattern = None
+    parts = root_header.parts
+    for i, part in enumerate(parts):
+        if part == "include" and i > 0:
+            source_pattern = parts[i - 1]  # e.g., "FunctorCore"
+            break
 
     for cmd in commands:
         if source_pattern and source_pattern not in cmd["file"]:
@@ -79,14 +89,18 @@ def run_gcc_h(
     Returns:
         stderr output from gcc -H containing the include tree.
     """
-    # -fno-pch disables precompiled headers so we see actual includes
-    gcc_cmd = f"g++ -H -E -fno-pch -std={cxx_std} {compile_flags} {header_path}"
+    gcc_cmd = f"g++ -H -E -std={cxx_std} {compile_flags} {header_path}"
     if wrapper:
-        cmd = f"{wrapper} {gcc_cmd}"
+        # Wrap the gcc command in bash -c so the wrapper correctly passes all arguments
+        # Add 2>&1 to capture -H output which goes to stderr
+        import shlex
+        gcc_cmd_with_redirect = f"{gcc_cmd} 2>&1"
+        cmd = f"{wrapper} bash -c {shlex.quote(gcc_cmd_with_redirect)}"
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        return result.stdout  # With 2>&1, all output goes to stdout
     else:
-        cmd = gcc_cmd
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    return result.stderr
+        result = subprocess.run(gcc_cmd, shell=True, capture_output=True, text=True)
+        return result.stderr
 
 
 def parse_gcc_h_output(output: str) -> IncludeGraph:

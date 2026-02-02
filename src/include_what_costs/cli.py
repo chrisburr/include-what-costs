@@ -49,14 +49,6 @@ def main() -> None:
         help="Output directory (default: results)",
     )
     parser.add_argument(
-        "--prmon", type=str, help="Path to prmon binary (enables benchmarking)"
-    )
-    parser.add_argument(
-        "--source-pattern",
-        type=str,
-        help="Pattern to match source file for compile flags",
-    )
-    parser.add_argument(
         "--prefix",
         type=str,
         help="Only show headers under this path prefix in the graph",
@@ -69,6 +61,11 @@ def main() -> None:
         type=str,
         help="Wrapper command for gcc (e.g., ./Rec/run)",
     )
+    parser.add_argument(
+        "--no-benchmark",
+        action="store_true",
+        help="Skip header cost benchmarking",
+    )
     parser.add_argument("--config", type=Path, help="Path to YAML config file")
 
     args = parser.parse_args()
@@ -80,12 +77,8 @@ def main() -> None:
             args.root = Path(config["root"])
         if not args.compile_commands and "compile-commands" in config:
             args.compile_commands = Path(config["compile-commands"])
-        if not args.prmon and "prmon" in config:
-            args.prmon = config["prmon"]
         if args.output == Path("results") and "output" in config:
             args.output = Path(config["output"])
-        if not args.source_pattern and "source-pattern" in config:
-            args.source_pattern = config["source-pattern"]
         if not args.wrapper and "wrapper" in config:
             args.wrapper = config["wrapper"]
         if not args.prefix and "prefix" in config:
@@ -104,7 +97,6 @@ def main() -> None:
     if args.wrapper:
         wrapper_path = Path(args.wrapper)
         if not wrapper_path.is_absolute():
-            # Use absolute() not resolve() to avoid following symlinks
             args.wrapper = str(Path.cwd() / wrapper_path)
     if args.prefix:
         args.prefix = str(Path(args.prefix).resolve())
@@ -115,7 +107,7 @@ def main() -> None:
     print(f"Analyzing {args.root}...")
     if args.wrapper:
         print(f"Using wrapper: {args.wrapper}")
-    flags = extract_compile_flags(args.compile_commands, args.source_pattern)
+    flags = extract_compile_flags(args.compile_commands, root_header=args.root)
     print(f"Compile flags (first 500 chars): {flags[:500]}...")
     output = run_gcc_h(args.root, flags, args.cxx_standard, args.wrapper)
     print(f"gcc -H output length: {len(output)} chars")
@@ -141,9 +133,9 @@ def main() -> None:
     else:
         print("Note: 'dot' not found, skipping PNG/SVG generation")
 
-    # Benchmark if prmon provided
+    # Benchmark headers
     results = None
-    if args.prmon:
+    if not args.no_benchmark:
         direct_includes = parse_includes(args.root)
         print(f"\nBenchmarking {len(direct_includes)} direct includes...")
 
@@ -152,7 +144,7 @@ def main() -> None:
 
         for i, header in enumerate(direct_includes):
             print(f"[{i + 1}/{len(direct_includes)}] {header}...", end=" ", flush=True)
-            r = benchmark_header(header, flags, work_dir, args.prmon, args.wrapper)
+            r = benchmark_header(header, flags, work_dir, "prmon", args.wrapper)
             results.append(r.__dict__)
 
             if r.success:
