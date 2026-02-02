@@ -61,11 +61,48 @@ def generate_html(
         headers_by_depth[depth].append(header)
         header_display_depth[header] = depth
 
-    # Sort headers within each depth for consistent layout
-    for depth in headers_by_depth:
-        headers_by_depth[depth].sort()
-
     max_depth = max(headers_by_depth.keys()) if headers_by_depth else 1
+
+    # Optimize node ordering within each ring to minimize edge lengths
+    # Use barycenter method: position nodes near their connected neighbors
+    header_angles: dict[str, float] = {}  # Track assigned angles
+
+    # Build reverse edge map (child -> parents)
+    child_to_parents: dict[str, set[str]] = defaultdict(set)
+    for parent, children in graph.edges.items():
+        for child in children:
+            child_to_parents[child].add(parent)
+
+    # Process rings from inside out
+    for depth in sorted(headers_by_depth.keys()):
+        headers = headers_by_depth[depth]
+        n_nodes = len(headers)
+
+        if depth == 1:
+            # For depth 1, order by average angle of children (what they include)
+            def child_score(h: str) -> float:
+                children = graph.edges.get(h, set())
+                relevant_children = [c for c in children if c in relevant]
+                if not relevant_children:
+                    return 0  # No children, put at top
+                # Use alphabetical order of children as a clustering heuristic
+                return sum(hash(c) for c in relevant_children) / len(relevant_children)
+            headers.sort(key=child_score)
+        else:
+            # For deeper rings, position near parents from previous ring
+            def parent_angle(h: str) -> float:
+                parents = child_to_parents.get(h, set())
+                relevant_parents = [p for p in parents if p in header_angles]
+                if not relevant_parents:
+                    return 0  # No positioned parents, default to top
+                # Average angle of parents
+                return sum(header_angles[p] for p in relevant_parents) / len(relevant_parents)
+            headers.sort(key=parent_angle)
+
+        # Assign angles to this ring's nodes
+        for i, header in enumerate(headers):
+            angle = 2 * math.pi * i / n_nodes - math.pi / 2
+            header_angles[header] = angle
 
     # Create network with physics disabled (we set fixed positions)
     net = Network(
