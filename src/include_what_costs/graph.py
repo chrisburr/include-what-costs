@@ -110,6 +110,31 @@ def run_gcc_h(
         return result.stderr
 
 
+def _compute_depths_bfs(graph: IncludeGraph) -> None:
+    """Compute minimum depths using BFS from root through edges.
+
+    This gives true shortest-path depths rather than gcc -H encounter order.
+    Modifies graph.header_depths in place.
+    """
+    from collections import deque
+
+    graph.header_depths.clear()
+
+    # BFS from virtual root through direct_includes
+    queue: deque[tuple[str, int]] = deque()
+    for header in graph.direct_includes:
+        if header in graph.all_headers:
+            queue.append((header, 1))
+            graph.header_depths[header] = 1
+
+    while queue:
+        node, depth = queue.popleft()
+        for child in graph.edges.get(node, set()):
+            if child not in graph.header_depths:
+                graph.header_depths[child] = depth + 1
+                queue.append((child, depth + 1))
+
+
 def parse_gcc_h_output(output: str) -> IncludeGraph:
     """Parse gcc -H output (dots indicate depth) into a graph.
 
@@ -137,10 +162,6 @@ def parse_gcc_h_output(output: str) -> IncludeGraph:
             graph.include_counts[header] += 1
             graph.all_headers.add(header)
 
-            # Track minimum depth at which this header is first included
-            if header not in graph.header_depths:
-                graph.header_depths[header] = depth
-
             # Track direct includes (depth 1 = directly included by root)
             if depth == 1:
                 graph.direct_includes.add(header)
@@ -154,5 +175,8 @@ def parse_gcc_h_output(output: str) -> IncludeGraph:
                 graph.edges[stack[-1]].add(header)
 
             stack.append(header)
+
+    # Compute true minimum depths via BFS (gcc -H order isn't reliable)
+    _compute_depths_bfs(graph)
 
     return graph

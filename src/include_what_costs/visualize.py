@@ -63,7 +63,7 @@ def generate_html(
     direct_include_names = {Path(inc).name for inc in root_children}
     direct_include_suffixes = set(root_children)  # e.g., "Functors/TES.h"
 
-    def is_direct_include(header: str) -> bool:
+    def match_direct_include(header: str) -> bool:
         """Check if header is directly included by root."""
         name = Path(header).name
         if name in direct_include_names:
@@ -73,15 +73,34 @@ def generate_html(
                     return True
         return False
 
+    # Compute depths via BFS from direct includes (gcc -H order is unreliable)
+    # First, resolve direct includes to full paths in relevant
+    depth1_headers: set[str] = set()
+    for header in relevant:
+        if match_direct_include(header):
+            depth1_headers.add(header)
+
+    # BFS to compute true minimum depths
+    from collections import deque
+
+    header_depths: dict[str, int] = {}
+    queue: deque[tuple[str, int]] = deque()
+    for h in depth1_headers:
+        header_depths[h] = 1
+        queue.append((h, 1))
+
+    while queue:
+        node, depth = queue.popleft()
+        for child in graph.edges.get(node, set()):
+            if child in relevant and child not in header_depths:
+                header_depths[child] = depth + 1
+                queue.append((child, depth + 1))
+
     # Group headers by depth for concentric circle layout
-    # Force depth 1 for direct includes (gcc -H may report them deeper if encountered earlier)
     headers_by_depth: dict[int, list[str]] = defaultdict(list)
     header_display_depth: dict[str, int] = {}  # Track actual display depth for labels
     for header in relevant:
-        if is_direct_include(header):
-            depth = 1
-        else:
-            depth = graph.header_depths.get(header, 1)
+        depth = header_depths.get(header, 1)  # Default to 1 if unreachable
         headers_by_depth[depth].append(header)
         header_display_depth[header] = depth
 
@@ -220,8 +239,10 @@ def generate_html(
                     pass  # Skip if edge already exists or nodes missing
 
     # Configure interaction options with highlighting
+    # physics.enabled: false is critical - without it, vis.js force simulation moves nodes
     net.set_options("""
     {
+        "physics": {"enabled": false},
         "interaction": {
             "navigationButtons": true,
             "zoomView": true,
