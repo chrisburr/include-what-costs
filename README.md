@@ -53,6 +53,7 @@ include-what-costs --config my_config.yaml
 | `--source-pattern` | Pattern to match source file for compile flags |
 | `--focus` | Focus DOT output on headers matching pattern |
 | `--cxx-standard` | C++ standard (default: c++20) |
+| `--wrapper` | Wrapper command for gcc (e.g., ./Rec/run) |
 | `--config` | Path to YAML config file |
 
 ## Output Files
@@ -84,10 +85,11 @@ find . -name 'JIT_includes.h.gch' -print -delete
 # Rebuild Rec
 make fast/Rec
 
-# Run analysis
-./Rec/run include-what-costs \
+# Run analysis (using --wrapper to run gcc through the LHCb environment)
+pixi run -m include-what-costs include-what-costs \
     --root Rec/Phys/FunctorCore/include/Functors/JIT_includes.h \
     --compile-commands Rec/build.x86_64_v3-el9-gcc13-opt/compile_commands.json \
+    --wrapper ./Rec/run \
     --prmon /cvmfs/lhcb.cern.ch/lhcbdirac/versions/v12.0.0-1761556625/Linux-x86_64/bin/prmon \
     --source-pattern FunctorCore \
     --output results/
@@ -95,5 +97,5 @@ make fast/Rec
 
 Or using the example config:
 ```bash
-./Rec/run include-what-costs --config include-what-costs/examples/lhcb_config.yaml
+pixi run -m include-what-costs include-what-costs --config include-what-costs/examples/lhcb_config.yaml
 ```

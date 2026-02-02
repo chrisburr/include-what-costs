@@ -60,6 +60,11 @@ def main() -> None:
     parser.add_argument(
         "--cxx-standard", default="c++20", help="C++ standard (default: c++20)"
     )
+    parser.add_argument(
+        "--wrapper",
+        type=str,
+        help="Wrapper command for gcc (e.g., ./Rec/run)",
+    )
     parser.add_argument("--config", type=Path, help="Path to YAML config file")
 
     args = parser.parse_args()
@@ -77,6 +82,8 @@ def main() -> None:
             args.output = Path(config["output"])
         if not args.source_pattern and "source-pattern" in config:
             args.source_pattern = config["source-pattern"]
+        if not args.wrapper and "wrapper" in config:
+            args.wrapper = config["wrapper"]
         if not args.focus and "focus" in config:
             args.focus = config["focus"]
 
@@ -90,8 +97,10 @@ def main() -> None:
 
     # Build include graph
     print(f"Analyzing {args.root}...")
+    if args.wrapper:
+        print(f"Using wrapper: {args.wrapper}")
     flags = extract_compile_flags(args.compile_commands, args.source_pattern)
-    output = run_gcc_h(args.root, flags, args.cxx_standard)
+    output = run_gcc_h(args.root, flags, args.cxx_standard, args.wrapper)
     graph = parse_gcc_h_output(output)
     print(f"Found {len(graph.all_headers)} unique headers")
 
@@ -111,7 +120,7 @@ def main() -> None:
 
         for i, header in enumerate(direct_includes):
             print(f"[{i + 1}/{len(direct_includes)}] {header}...", end=" ", flush=True)
-            r = benchmark_header(header, flags, work_dir, args.prmon)
+            r = benchmark_header(header, flags, work_dir, args.prmon, args.wrapper)
             results.append(r.__dict__)
 
             if r.success:

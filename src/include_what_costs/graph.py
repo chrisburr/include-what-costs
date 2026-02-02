@@ -60,18 +60,28 @@ def extract_compile_flags(
     raise RuntimeError("No suitable compile command found")
 
 
-def run_gcc_h(header_path: Path, compile_flags: str, cxx_std: str = "c++20") -> str:
+def run_gcc_h(
+    header_path: Path,
+    compile_flags: str,
+    cxx_std: str = "c++20",
+    wrapper: str | None = None,
+) -> str:
     """Run gcc -H to extract include hierarchy.
 
     Args:
         header_path: Path to the header file to analyze.
         compile_flags: Compiler flags (includes, defines, etc.).
         cxx_std: C++ standard to use.
+        wrapper: Optional wrapper command (e.g., "./Rec/run").
 
     Returns:
         stderr output from gcc -H containing the include tree.
     """
-    cmd = f"g++ -H -E -std={cxx_std} {compile_flags} {header_path}"
+    gcc_cmd = f"g++ -H -E -std={cxx_std} {compile_flags} {header_path}"
+    if wrapper:
+        cmd = f"{wrapper} {gcc_cmd}"
+    else:
+        cmd = gcc_cmd
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     return result.stderr
 

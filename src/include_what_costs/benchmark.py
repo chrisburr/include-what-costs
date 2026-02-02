@@ -18,7 +18,11 @@ class BenchmarkResult:
 
 
 def benchmark_header(
-    header: str, compile_cmd: str, work_dir: Path, prmon_path: str
+    header: str,
+    compile_cmd: str,
+    work_dir: Path,
+    prmon_path: str,
+    wrapper: str | None = None,
 ) -> BenchmarkResult:
     """Benchmark a single header's compile cost.
 
@@ -30,6 +34,7 @@ def benchmark_header(
         compile_cmd: Base compile command with flags.
         work_dir: Directory to create test files in.
         prmon_path: Path to the prmon binary.
+        wrapper: Optional wrapper command (e.g., "./Rec/run").
 
     Returns:
         BenchmarkResult with RSS, time, and success status.
@@ -42,7 +47,11 @@ def benchmark_header(
     test_cpp.write_text(f'#include "{header}"\n')
 
     prmon_json = test_dir / "prmon.json"
-    full_cmd = f"g++ {compile_cmd} -c {test_cpp} -o {test_dir}/test.o"
+    gcc_cmd = f"g++ {compile_cmd} -c {test_cpp} -o {test_dir}/test.o"
+    if wrapper:
+        full_cmd = f"{wrapper} {gcc_cmd}"
+    else:
+        full_cmd = gcc_cmd
 
     cmd = [
         prmon_path,
