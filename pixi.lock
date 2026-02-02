@@ -88,6 +88,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pixman-0.46.4-h54a6638_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/prmon-3.2.0-ha91398d_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pthread-stubs-0.4-hb9d3cd8_1002.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/pygraphviz-1.14-py314h5b92a88_3.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.14.2-h32b2ec7_101_cp314.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.14-8_cp314.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/readline-8.3-h853b02a_0.conda
@@ -589,9 +590,10 @@ packages:
 - pypi: ./
   name: include-what-costs
   version: 0.1.0
-  sha256: 1eb777b7067eac7c7b12b1aa075fb752dee15ea27c4518f0198fc068c0c94892
+  sha256: 09216b8b6ed46eb678b4f49136826c3b584912be2e512db043dd7f2109c401ea
   requires_dist:
   - pyvis
+  - pygraphviz
   - pyyaml ; extra == 'yaml'
   requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/3d/aa/898dec789a05731cd5a9f50605b7b44a72bd198fd0d4528e11fc610177cc/ipython-9.10.0-py3-none-any.whl
@@ -1460,6 +1462,21 @@ packages:
   requires_dist:
   - colorama>=0.4.6 ; extra == 'windows-terminal'
   requires_python: '>=3.8'
+- conda: https://conda.anaconda.org/conda-forge/linux-64/pygraphviz-1.14-py314h5b92a88_3.conda
+  sha256: 02d9f396b440908b200f8c709705a909c135479bac15229ff897f63554741ff3
+  md5: df9e41bd59730b88d0900142f3888458
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - graphviz >=14.1.0,<15.0a0
+  - libgcc >=14
+  - python >=3.14,<3.15.0a0
+  - python_abi 3.14.* *_cp314
+  license: BSD-3-Clause
+  license_family: BSD
+  purls:
+  - pkg:pypi/pygraphviz?source=hash-mapping
+  size: 147626
+  timestamp: 1768734961433
 - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.14.2-h32b2ec7_101_cp314.conda
   build_number: 101
   sha256: 24719868a471dd94041aa9873c6f87adf3b86c07878ad4e242ac97228f9e6460
