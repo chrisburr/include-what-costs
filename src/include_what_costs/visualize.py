@@ -63,46 +63,69 @@ def generate_html(
 
     max_depth = max(headers_by_depth.keys()) if headers_by_depth else 1
 
-    # Optimize node ordering within each ring to minimize edge lengths
-    # Use barycenter method: position nodes near their connected neighbors
-    header_angles: dict[str, float] = {}  # Track assigned angles
-
-    # Build reverse edge map (child -> parents)
+    # Build reverse edge map (child -> parents that include it)
     child_to_parents: dict[str, set[str]] = defaultdict(set)
     for parent, children in graph.edges.items():
-        for child in children:
-            child_to_parents[child].add(parent)
+        if parent in relevant:
+            for child in children:
+                if child in relevant:
+                    child_to_parents[child].add(parent)
 
-    # Process rings from inside out
+    # Also add edges from root to direct includes
+    if graph.root:
+        for inc in root_children:
+            for h in relevant:
+                if h.endswith(inc) or Path(h).name == Path(inc).name:
+                    child_to_parents[h].add("__root__")
+                    break
+
+    # Initialize angles - start with alphabetical order
+    header_angles: dict[str, float] = {"__root__": -math.pi / 2}  # Root at top
     for depth in sorted(headers_by_depth.keys()):
-        headers = headers_by_depth[depth]
+        headers = sorted(headers_by_depth[depth])  # Alphabetical initial order
         n_nodes = len(headers)
-
-        if depth == 1:
-            # For depth 1, order by average angle of children (what they include)
-            def child_score(h: str) -> float:
-                children = graph.edges.get(h, set())
-                relevant_children = [c for c in children if c in relevant]
-                if not relevant_children:
-                    return 0  # No children, put at top
-                # Use alphabetical order of children as a clustering heuristic
-                return sum(hash(c) for c in relevant_children) / len(relevant_children)
-            headers.sort(key=child_score)
-        else:
-            # For deeper rings, position near parents from previous ring
-            def parent_angle(h: str) -> float:
-                parents = child_to_parents.get(h, set())
-                relevant_parents = [p for p in parents if p in header_angles]
-                if not relevant_parents:
-                    return 0  # No positioned parents, default to top
-                # Average angle of parents
-                return sum(header_angles[p] for p in relevant_parents) / len(relevant_parents)
-            headers.sort(key=parent_angle)
-
-        # Assign angles to this ring's nodes
         for i, header in enumerate(headers):
-            angle = 2 * math.pi * i / n_nodes - math.pi / 2
-            header_angles[header] = angle
+            header_angles[header] = 2 * math.pi * i / n_nodes - math.pi / 2
+
+    # Iterative barycenter optimization
+    # Each node moves toward the average angle of its parents
+    for iteration in range(10):
+        moved = False
+        for depth in sorted(headers_by_depth.keys()):
+            headers = headers_by_depth[depth]
+            n_nodes = len(headers)
+
+            # Compute ideal angle for each node (average of parent angles)
+            ideal_angles: list[tuple[float, str]] = []
+            for header in headers:
+                parents = child_to_parents.get(header, set())
+                if parents:
+                    # Average angle of parents, handling wrap-around
+                    parent_angles = [header_angles[p] for p in parents if p in header_angles]
+                    if parent_angles:
+                        # Use vector averaging to handle circular mean
+                        avg_x = sum(math.cos(a) for a in parent_angles) / len(parent_angles)
+                        avg_y = sum(math.sin(a) for a in parent_angles) / len(parent_angles)
+                        ideal = math.atan2(avg_y, avg_x)
+                    else:
+                        ideal = header_angles[header]
+                else:
+                    ideal = header_angles[header]
+                ideal_angles.append((ideal, header))
+
+            # Sort by ideal angle and reassign evenly spaced positions
+            ideal_angles.sort(key=lambda x: x[0])
+            new_order = [h for _, h in ideal_angles]
+            old_order = sorted(headers, key=lambda h: header_angles[h])
+
+            if new_order != old_order:
+                moved = True
+                headers_by_depth[depth] = new_order
+                for i, header in enumerate(new_order):
+                    header_angles[header] = 2 * math.pi * i / n_nodes - math.pi / 2
+
+        if not moved:
+            break  # Converged
 
     # Create network with physics disabled (we set fixed positions)
     net = Network(
