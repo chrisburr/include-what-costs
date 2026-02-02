@@ -144,22 +144,124 @@ def generate_html(
                 except Exception:
                     pass  # Skip if edge already exists or nodes missing
 
-    # Configure interaction options
+    # Configure interaction options with highlighting
     net.set_options("""
     {
         "interaction": {
             "navigationButtons": true,
             "zoomView": true,
-            "dragView": true
+            "dragView": true,
+            "hover": true,
+            "selectConnectedEdges": true,
+            "tooltipDelay": 100
         },
         "edges": {
             "arrows": {"to": {"enabled": true, "scaleFactor": 0.5}},
-            "smooth": {"type": "continuous"}
+            "smooth": {"type": "continuous"},
+            "selectionWidth": 2,
+            "hoverWidth": 2
+        },
+        "nodes": {
+            "borderWidth": 1,
+            "borderWidthSelected": 3
         }
     }
     """)
 
     net.save_graph(str(output_file))
+
+    # Inject custom JavaScript for better selection highlighting
+    _inject_highlight_script(output_file)
+
+
+def _inject_highlight_script(output_file: Path) -> None:
+    """Inject custom JavaScript for better selection highlighting.
+
+    When a node is selected, this highlights:
+    - Incoming edges (headers that include this one) in blue
+    - Outgoing edges (headers this one includes) in green
+    """
+    with open(output_file, "r") as f:
+        html = f.read()
+
+    # JavaScript to add after the network is created
+    custom_script = """
+    <script type="text/javascript">
+    // Wait for network to be ready
+    document.addEventListener('DOMContentLoaded', function() {
+        // Give vis.js time to initialize
+        setTimeout(function() {
+            if (typeof network === 'undefined') return;
+
+            // Create info panel
+            var infoPanel = document.createElement('div');
+            infoPanel.id = 'infoPanel';
+            infoPanel.style.cssText = 'position:fixed;top:10px;right:10px;padding:15px;background:white;border:1px solid #ccc;border-radius:5px;font-family:monospace;font-size:12px;max-width:400px;display:none;z-index:1000;box-shadow:0 2px 10px rgba(0,0,0,0.1);';
+            document.body.appendChild(infoPanel);
+
+            // Create legend
+            var legend = document.createElement('div');
+            legend.innerHTML = '<div style="position:fixed;bottom:10px;right:10px;padding:10px;background:white;border:1px solid #ccc;border-radius:5px;font-family:sans-serif;font-size:11px;">' +
+                '<div><span style="display:inline-block;width:20px;height:3px;background:#2ecc71;margin-right:5px;vertical-align:middle;"></span> includes (outgoing)</div>' +
+                '<div><span style="display:inline-block;width:20px;height:3px;background:#3498db;margin-right:5px;vertical-align:middle;"></span> included by (incoming)</div>' +
+                '</div>';
+            document.body.appendChild(legend);
+
+            var originalColors = {};
+
+            network.on('selectNode', function(params) {
+                var selectedNode = params.nodes[0];
+                var connectedEdges = network.getConnectedEdges(selectedNode);
+                var incoming = [];
+                var outgoing = [];
+
+                // Store original colors and categorize edges
+                connectedEdges.forEach(function(edgeId) {
+                    var edge = edges.get(edgeId);
+                    if (!originalColors[edgeId]) {
+                        originalColors[edgeId] = edge.color;
+                    }
+
+                    if (edge.to === selectedNode) {
+                        incoming.push({edge: edgeId, from: edge.from});
+                        edges.update({id: edgeId, color: {color: '#3498db', highlight: '#3498db'}, width: 2});
+                    } else {
+                        outgoing.push({edge: edgeId, to: edge.to});
+                        edges.update({id: edgeId, color: {color: '#2ecc71', highlight: '#2ecc71'}, width: 2});
+                    }
+                });
+
+                // Update info panel
+                infoPanel.innerHTML = '<strong>' + selectedNode + '</strong><br><br>' +
+                    '<span style="color:#2ecc71">▶ Includes ' + outgoing.length + ' headers:</span><br>' +
+                    outgoing.slice(0, 10).map(function(e) { return '&nbsp;&nbsp;' + e.to; }).join('<br>') +
+                    (outgoing.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (outgoing.length - 10) + ' more' : '') +
+                    '<br><br>' +
+                    '<span style="color:#3498db">◀ Included by ' + incoming.length + ' headers:</span><br>' +
+                    incoming.slice(0, 10).map(function(e) { return '&nbsp;&nbsp;' + e.from; }).join('<br>') +
+                    (incoming.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (incoming.length - 10) + ' more' : '');
+                infoPanel.style.display = 'block';
+            });
+
+            network.on('deselectNode', function(params) {
+                // Restore original edge colors
+                Object.keys(originalColors).forEach(function(edgeId) {
+                    edges.update({id: edgeId, color: originalColors[edgeId], width: 1});
+                });
+                originalColors = {};
+                infoPanel.style.display = 'none';
+            });
+
+        }, 500);
+    });
+    </script>
+    """
+
+    # Insert before closing body tag
+    html = html.replace("</body>", custom_script + "</body>")
+
+    with open(output_file, "w") as f:
+        f.write(html)
 
 
 def generate_dot(
