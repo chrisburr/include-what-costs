@@ -34,11 +34,32 @@ def generate_html(
     else:
         relevant = graph.all_headers
 
+    # Build set of direct include basenames for quick lookup
+    root_children = direct_includes if direct_includes else graph.direct_includes
+    direct_include_names = {Path(inc).name for inc in root_children}
+    direct_include_suffixes = set(root_children)  # e.g., "Functors/TES.h"
+
+    def is_direct_include(header: str) -> bool:
+        """Check if header is directly included by root."""
+        name = Path(header).name
+        if name in direct_include_names:
+            # Also check suffix matches to avoid false positives on common names
+            for suffix in direct_include_suffixes:
+                if header.endswith(suffix):
+                    return True
+        return False
+
     # Group headers by depth for concentric circle layout
+    # Force depth 1 for direct includes (gcc -H may report them deeper if encountered earlier)
     headers_by_depth: dict[int, list[str]] = defaultdict(list)
+    header_display_depth: dict[str, int] = {}  # Track actual display depth for labels
     for header in relevant:
-        depth = graph.header_depths.get(header, 1)
+        if is_direct_include(header):
+            depth = 1
+        else:
+            depth = graph.header_depths.get(header, 1)
         headers_by_depth[depth].append(header)
+        header_display_depth[header] = depth
 
     # Sort headers within each depth for consistent layout
     for depth in headers_by_depth:
@@ -114,7 +135,6 @@ def generate_html(
             )
 
     # Add edges from root to direct includes
-    root_children = direct_includes if direct_includes else graph.direct_includes
     if root_name and root_children:
         for child in root_children:
             child_name = Path(child).name
