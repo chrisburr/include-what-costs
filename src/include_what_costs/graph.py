@@ -79,7 +79,8 @@ def run_gcc_h(
     Returns:
         stderr output from gcc -H containing the include tree.
     """
-    gcc_cmd = f"g++ -H -E -std={cxx_std} {compile_flags} {header_path}"
+    # -fno-pch disables precompiled headers so we see actual includes
+    gcc_cmd = f"g++ -H -E -fno-pch -std={cxx_std} {compile_flags} {header_path}"
     if wrapper:
         cmd = f"{wrapper} {gcc_cmd}"
     else:

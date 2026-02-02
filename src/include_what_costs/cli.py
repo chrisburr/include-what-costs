@@ -57,16 +57,9 @@ def main() -> None:
         help="Pattern to match source file for compile flags",
     )
     parser.add_argument(
-        "--focus",
+        "--prefix",
         type=str,
-        action="append",
-        help="Focus DOT output on headers matching pattern (can be repeated)",
-    )
-    parser.add_argument(
-        "--focus-depth",
-        type=int,
-        default=1,
-        help="Include N levels of children beyond focused headers (default: 1)",
+        help="Only show headers under this path prefix in the graph",
     )
     parser.add_argument(
         "--cxx-standard", default="c++20", help="C++ standard (default: c++20)"
@@ -76,11 +69,6 @@ def main() -> None:
         type=str,
         help="Wrapper command for gcc (e.g., ./Rec/run)",
     )
-    parser.add_argument(
-        "--cwd",
-        type=Path,
-        help="Working directory for resolving relative paths (useful with pixi)",
-    )
     parser.add_argument("--config", type=Path, help="Path to YAML config file")
 
     args = parser.parse_args()
@@ -88,8 +76,6 @@ def main() -> None:
     # Load config file if provided
     if args.config:
         config = load_config(args.config)
-        if not args.cwd and "cwd" in config:
-            args.cwd = Path(config["cwd"])
         if not args.root and "root" in config:
             args.root = Path(config["root"])
         if not args.compile_commands and "compile-commands" in config:
@@ -102,15 +88,8 @@ def main() -> None:
             args.source_pattern = config["source-pattern"]
         if not args.wrapper and "wrapper" in config:
             args.wrapper = config["wrapper"]
-        if not args.focus and "focus" in config:
-            focus_val = config["focus"]
-            # Support both single string and list in config
-            if isinstance(focus_val, list):
-                args.focus = focus_val
-            else:
-                args.focus = [focus_val]
-        if args.focus_depth == 1 and "focus-depth" in config:
-            args.focus_depth = config["focus-depth"]
+        if not args.prefix and "prefix" in config:
+            args.prefix = config["prefix"]
 
     # Validate required arguments
     if not args.root:
@@ -119,19 +98,16 @@ def main() -> None:
         parser.error("--compile-commands is required")
 
     # Resolve all paths to absolute
-    # If --cwd is specified, resolve relative paths against it (useful when run via pixi)
-    base_dir = args.cwd.resolve() if args.cwd else Path.cwd()
-
-    def resolve_path(p: Path) -> Path:
-        if p.is_absolute():
-            return p
-        return (base_dir / p).resolve()
-
-    args.root = resolve_path(args.root)
-    args.compile_commands = resolve_path(args.compile_commands)
-    args.output = resolve_path(args.output)
-    if args.wrapper and not Path(args.wrapper).is_absolute():
-        args.wrapper = str(base_dir / args.wrapper)
+    args.root = args.root.resolve()
+    args.compile_commands = args.compile_commands.resolve()
+    args.output = args.output.resolve()
+    if args.wrapper:
+        wrapper_path = Path(args.wrapper)
+        if not wrapper_path.is_absolute():
+            # Use absolute() not resolve() to avoid following symlinks
+            args.wrapper = str(Path.cwd() / wrapper_path)
+    if args.prefix:
+        args.prefix = str(Path(args.prefix).resolve())
 
     args.output.mkdir(parents=True, exist_ok=True)
 
@@ -140,7 +116,9 @@ def main() -> None:
     if args.wrapper:
         print(f"Using wrapper: {args.wrapper}")
     flags = extract_compile_flags(args.compile_commands, args.source_pattern)
+    print(f"Compile flags (first 500 chars): {flags[:500]}...")
     output = run_gcc_h(args.root, flags, args.cxx_standard, args.wrapper)
+    print(f"gcc -H output length: {len(output)} chars")
     graph = parse_gcc_h_output(output)
     graph.root = str(args.root)  # Store root header path
     print(f"Found {len(graph.all_headers)} unique headers")
@@ -148,7 +126,7 @@ def main() -> None:
     # Generate graph outputs
     generate_json(graph, args.output / "include_graph.json")
     dot_file = args.output / "include_graph.dot"
-    generate_dot(graph, dot_file, args.focus, focus_depth=args.focus_depth)
+    generate_dot(graph, dot_file, args.prefix)
     print("Wrote include_graph.json and include_graph.dot")
 
     # Generate PNG and SVG if dot is available

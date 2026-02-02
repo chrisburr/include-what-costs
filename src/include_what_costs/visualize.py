@@ -10,61 +10,34 @@ from .graph import IncludeGraph
 def generate_dot(
     graph: IncludeGraph,
     output_file: Path,
-    focus_patterns: list[str] | None = None,
-    max_nodes: int = 200,
-    focus_depth: int = 1,
+    prefix: str | None = None,
 ) -> None:
     """Generate Graphviz DOT file from include graph.
 
     Args:
         graph: The include graph to visualize.
         output_file: Path to write the DOT file.
-        focus_patterns: If provided, only include headers matching any of these patterns
-                        plus children up to focus_depth levels deep.
-        max_nodes: Maximum number of nodes to include (most-included first).
-        focus_depth: How many levels of children to include beyond focused headers.
+        prefix: Only include headers under this path prefix.
     """
-    def get_children(h: str, depth: int, visited: set[str] | None = None) -> set[str]:
-        """Get children of a header up to a certain depth."""
-        if visited is None:
-            visited = set()
-        if depth <= 0 or h in visited:
-            return set()
-        visited.add(h)
-        children = set()
-        for child in graph.edges.get(h, set()):
-            children.add(child)
-            if depth > 1:
-                children.update(get_children(child, depth - 1, visited))
-        return children
-
-    # Determine which headers to include
-    if focus_patterns:
-        # Find headers matching any of the patterns
-        focused = set()
-        for pattern in focus_patterns:
-            pattern_lower = pattern.lower()
-            for h in graph.all_headers:
-                if pattern_lower in h.lower():
-                    focused.add(h)
-
-        # Include focused headers plus their children up to focus_depth
-        relevant = set(focused)
-        for h in focused:
-            relevant.update(get_children(h, focus_depth))
+    # Filter headers by prefix
+    if prefix:
+        prefix_resolved = str(Path(prefix).resolve())
+        relevant = {h for h in graph.all_headers if h.startswith(prefix_resolved)}
+        # Debug: show what's being filtered
+        print(f"Prefix filter: {prefix_resolved}")
+        print(f"Sample headers (first 5):")
+        for h in list(graph.all_headers)[:5]:
+            print(f"  {h} -> matches: {h.startswith(prefix_resolved)}")
+        print(f"Headers matching prefix: {len(relevant)}")
     else:
-        sorted_headers = sorted(graph.include_counts.items(), key=lambda x: -x[1])
-        relevant = {h for h, _ in sorted_headers[:max_nodes]}
-
-    # Always include direct includes from root so the graph is connected
-    relevant.update(graph.direct_includes)
+        relevant = graph.all_headers
 
     with open(output_file, "w") as f:
         f.write("digraph includes {\n")
         f.write("  rankdir=TB;\n")
         f.write("  node [shape=box, fontsize=10];\n")
 
-        # Add root header as entry point (if set)
+        # Add root header as entry point (if set and matches prefix)
         root_name = None
         if graph.root:
             root_name = Path(graph.root).name
