@@ -2,11 +2,19 @@
 
 import csv
 import json
-import math
 from collections import defaultdict
 from pathlib import Path
 
 from .graph import IncludeGraph
+from .layout import (
+    apply_filter,
+    build_layout_graph,
+    classify_edges,
+    compute_depths,
+    compute_positions,
+    extract_angles,
+    render_graph,
+)
 
 
 def generate_html(
@@ -17,7 +25,8 @@ def generate_html(
 ) -> None:
     """Generate interactive HTML visualization using pyvis.
 
-    Nodes are positioned in concentric circles based on include depth.
+    Nodes are positioned in concentric circles based on include depth,
+    using twopi for angular positioning.
 
     Args:
         graph: The include graph to visualize.
@@ -25,314 +34,61 @@ def generate_html(
         prefix: Only include headers under this path prefix.
         direct_includes: List of headers directly included by root (from parsing the file).
     """
-    from pyvis.network import Network
+    # Convert IncludeGraph edges to dict format expected by layout module
+    edges = {k: set(v) for k, v in graph.edges.items()}
 
-    # Filter headers by prefix
-    if prefix:
-        prefix_resolved = str(Path(prefix).resolve())
-        relevant = {h for h in graph.all_headers if h.startswith(prefix_resolved)}
-    else:
-        relevant = graph.all_headers
-
-    # Build set of direct include basenames for quick lookup
-    root_children = direct_includes if direct_includes else graph.direct_includes
+    # Resolve direct includes to full paths
+    root_children = direct_includes if direct_includes else list(graph.direct_includes)
     direct_include_names = {Path(inc).name for inc in root_children}
-    direct_include_suffixes = set(root_children)  # e.g., "Functors/TES.h"
+    direct_include_suffixes = set(root_children)
 
     def match_direct_include(header: str) -> bool:
         """Check if header is directly included by root."""
         name = Path(header).name
         if name in direct_include_names:
-            # Also check suffix matches to avoid false positives on common names
             for suffix in direct_include_suffixes:
                 if header.endswith(suffix):
                     return True
         return False
 
-    # Compute depths via BFS from direct includes (gcc -H order is unreliable)
-    # First, resolve direct includes to full paths in relevant
+    # Find depth-1 headers (full paths)
     depth1_headers: set[str] = set()
-    for header in relevant:
+    for header in graph.all_headers:
         if match_direct_include(header):
             depth1_headers.add(header)
 
-    # BFS to compute true minimum depths
-    from collections import deque
+    # Use new layout module for depth computation
+    headers_by_depth, header_to_depth = compute_depths(edges, depth1_headers)
 
-    header_depths: dict[str, int] = {}
-    queue: deque[tuple[str, int]] = deque()
-    for h in depth1_headers:
-        header_depths[h] = 1
-        queue.append((h, 1))
+    # Classify edges by type
+    classified = classify_edges(edges, header_to_depth)
 
-    while queue:
-        node, depth = queue.popleft()
-        for child in graph.edges.get(node, set()):
-            if child in relevant and child not in header_depths:
-                header_depths[child] = depth + 1
-                queue.append((child, depth + 1))
+    # Build layout graph and extract angles
+    layout_graph = build_layout_graph(edges, header_to_depth, classified)
+    angles = extract_angles(layout_graph)
 
-    # Group headers by depth for concentric circle layout
-    headers_by_depth: dict[int, list[str]] = defaultdict(list)
-    header_display_depth: dict[str, int] = {}  # Track actual display depth for labels
-    for header in relevant:
-        depth = header_depths.get(header, 1)  # Default to 1 if unreachable
-        headers_by_depth[depth].append(header)
-        header_display_depth[header] = depth
+    # Compute positions with strict concentric radii
+    positions = compute_positions(angles, header_to_depth)
 
-    max_depth = max(headers_by_depth.keys()) if headers_by_depth else 1
+    # Apply filter if specified
+    filter_result = None
+    if prefix:
+        filter_result = apply_filter(edges, prefix, graph.all_headers)
+        # Print any warnings about paths through external headers
+        for warning in filter_result.warnings:
+            print(f"Warning: {warning}")
 
-    # Build reverse edge map (child -> parents that include it)
-    child_to_parents: dict[str, set[str]] = defaultdict(set)
-    for parent, children in graph.edges.items():
-        if parent in relevant:
-            for child in children:
-                if child in relevant:
-                    child_to_parents[child].add(parent)
-
-    # Also add edges from root to direct includes
-    if graph.root:
-        for inc in root_children:
-            for h in relevant:
-                if h.endswith(inc) or Path(h).name == Path(inc).name:
-                    child_to_parents[h].add("__root__")
-                    break
-
-    # Sort headers alphabetically for consistent ordering
-    for depth in headers_by_depth:
-        headers_by_depth[depth].sort()
-
-    # Create network with physics disabled (we set fixed positions)
-    net = Network(
-        height="900px",
-        width="100%",
-        bgcolor="#ffffff",
-        directed=True,
+    # Render the graph
+    root_name = Path(graph.root).name if graph.root else None
+    render_graph(
+        positions=positions,
+        edges=edges,
+        classified_edges=classified,
+        filter_result=filter_result,
+        include_counts=dict(graph.include_counts),
+        output_path=output_file,
+        root_name=root_name,
     )
-    net.toggle_physics(False)
-
-    # Calculate positions for concentric circles
-    min_node_spacing = 80  # minimum pixels between adjacent nodes on a ring
-    min_ring_gap = 100  # minimum gap between rings
-    header_to_name: dict[str, str] = {}  # full path -> display name
-
-    # Pre-calculate radii for each depth to ensure nodes aren't too dense
-    # Radius must be large enough that arc length between nodes >= min_node_spacing
-    # Arc length = 2 * pi * radius / n_nodes >= min_node_spacing
-    # Therefore: radius >= n_nodes * min_node_spacing / (2 * pi)
-    ring_radii: dict[int, float] = {}
-    current_radius = 0.0
-    for depth in sorted(headers_by_depth.keys()):
-        n_nodes = len(headers_by_depth[depth])
-        min_radius_for_spacing = n_nodes * min_node_spacing / (2 * math.pi)
-        # Radius must be at least min_ring_gap more than previous ring
-        ring_radii[depth] = max(current_radius + min_ring_gap, min_radius_for_spacing)
-        current_radius = ring_radii[depth]
-
-    # Add root node at center
-    root_name = None
-    if graph.root:
-        root_name = Path(graph.root).name
-        net.add_node(
-            root_name,
-            label=root_name,
-            title=f"{graph.root}\n(root)",
-            x=0,
-            y=0,
-            fixed=True,
-            color="#87CEEB",  # light blue
-            shape="box",
-            font={"size": 12},
-        )
-
-    # Add nodes in concentric circles by depth
-    for depth in sorted(headers_by_depth.keys()):
-        headers = headers_by_depth[depth]
-        n_nodes = len(headers)
-        radius = ring_radii[depth]
-
-        for i, header in enumerate(headers):
-            # Distribute nodes evenly around the circle
-            angle = 2 * math.pi * i / n_nodes - math.pi / 2  # Start from top
-            x = radius * math.cos(angle)
-            y = radius * math.sin(angle)
-
-            name = Path(header).name
-            header_to_name[header] = name
-            count = graph.include_counts.get(header, 0)
-
-            # Color based on include count
-            if count > 10:
-                color = "#ff6b6b"  # red
-            elif count > 5:
-                color = "#ffa94d"  # orange
-            elif count > 2:
-                color = "#ffd43b"  # yellow
-            else:
-                color = "#e9ecef"  # light gray
-
-            net.add_node(
-                name,
-                label=f"{name}\n({count}x, d{depth})",
-                title=f"{header}\nIncluded {count}x\nDepth: {depth}",
-                x=x,
-                y=y,
-                fixed=True,
-                color=color,
-                shape="box",
-                font={"size": 10},
-            )
-
-    # Add edges from root to direct includes
-    if root_name and root_children:
-        for child in root_children:
-            child_name = Path(child).name
-            for full_path in relevant:
-                if full_path.endswith(child) or Path(full_path).name == child_name:
-                    target_name = header_to_name.get(full_path, Path(full_path).name)
-                    try:
-                        net.add_edge(root_name, target_name, color="#888888")
-                    except Exception:
-                        pass  # Node might not exist if filtered
-                    break
-
-    # Add edges between headers
-    for parent, children in graph.edges.items():
-        if parent not in relevant:
-            continue
-        parent_name = header_to_name.get(parent)
-        if not parent_name:
-            continue
-        for child in children:
-            if child not in relevant:
-                continue
-            child_name = header_to_name.get(child)
-            if child_name:
-                try:
-                    net.add_edge(parent_name, child_name, color="#cccccc")
-                except Exception:
-                    pass  # Skip if edge already exists or nodes missing
-
-    # Configure interaction options with highlighting
-    # physics.enabled: false is critical - without it, vis.js force simulation moves nodes
-    net.set_options("""
-    {
-        "physics": {"enabled": false},
-        "interaction": {
-            "navigationButtons": true,
-            "zoomView": true,
-            "dragView": true,
-            "hover": true,
-            "selectConnectedEdges": true,
-            "tooltipDelay": 100
-        },
-        "edges": {
-            "arrows": {"to": {"enabled": true, "scaleFactor": 0.5}},
-            "smooth": {"type": "continuous"},
-            "selectionWidth": 2,
-            "hoverWidth": 2
-        },
-        "nodes": {
-            "borderWidth": 1,
-            "borderWidthSelected": 3
-        }
-    }
-    """)
-
-    net.save_graph(str(output_file))
-
-    # Inject custom JavaScript for better selection highlighting
-    _inject_highlight_script(output_file)
-
-
-def _inject_highlight_script(output_file: Path) -> None:
-    """Inject custom JavaScript for better selection highlighting.
-
-    When a node is selected, this highlights:
-    - Incoming edges (headers that include this one) in blue
-    - Outgoing edges (headers this one includes) in green
-    """
-    with open(output_file, "r") as f:
-        html = f.read()
-
-    # JavaScript to add after the network is created
-    custom_script = """
-    <script type="text/javascript">
-    // Wait for network to be ready
-    document.addEventListener('DOMContentLoaded', function() {
-        // Give vis.js time to initialize
-        setTimeout(function() {
-            if (typeof network === 'undefined') return;
-
-            // Create info panel
-            var infoPanel = document.createElement('div');
-            infoPanel.id = 'infoPanel';
-            infoPanel.style.cssText = 'position:fixed;top:10px;right:10px;padding:15px;background:white;border:1px solid #ccc;border-radius:5px;font-family:monospace;font-size:12px;max-width:400px;display:none;z-index:1000;box-shadow:0 2px 10px rgba(0,0,0,0.1);';
-            document.body.appendChild(infoPanel);
-
-            // Create legend
-            var legend = document.createElement('div');
-            legend.innerHTML = '<div style="position:fixed;bottom:10px;right:10px;padding:10px;background:white;border:1px solid #ccc;border-radius:5px;font-family:sans-serif;font-size:11px;">' +
-                '<div><span style="display:inline-block;width:20px;height:3px;background:#2ecc71;margin-right:5px;vertical-align:middle;"></span> includes (outgoing)</div>' +
-                '<div><span style="display:inline-block;width:20px;height:3px;background:#3498db;margin-right:5px;vertical-align:middle;"></span> included by (incoming)</div>' +
-                '</div>';
-            document.body.appendChild(legend);
-
-            var originalColors = {};
-
-            network.on('selectNode', function(params) {
-                var selectedNode = params.nodes[0];
-                var connectedEdges = network.getConnectedEdges(selectedNode);
-                var incoming = [];
-                var outgoing = [];
-
-                // Store original colors and categorize edges
-                connectedEdges.forEach(function(edgeId) {
-                    var edge = edges.get(edgeId);
-                    if (!originalColors[edgeId]) {
-                        originalColors[edgeId] = edge.color;
-                    }
-
-                    if (edge.to === selectedNode) {
-                        incoming.push({edge: edgeId, from: edge.from});
-                        edges.update({id: edgeId, color: {color: '#3498db', highlight: '#3498db'}, width: 2});
-                    } else {
-                        outgoing.push({edge: edgeId, to: edge.to});
-                        edges.update({id: edgeId, color: {color: '#2ecc71', highlight: '#2ecc71'}, width: 2});
-                    }
-                });
-
-                // Update info panel
-                infoPanel.innerHTML = '<strong>' + selectedNode + '</strong><br><br>' +
-                    '<span style="color:#2ecc71">▶ Includes ' + outgoing.length + ' headers:</span><br>' +
-                    outgoing.slice(0, 10).map(function(e) { return '&nbsp;&nbsp;' + e.to; }).join('<br>') +
-                    (outgoing.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (outgoing.length - 10) + ' more' : '') +
-                    '<br><br>' +
-                    '<span style="color:#3498db">◀ Included by ' + incoming.length + ' headers:</span><br>' +
-                    incoming.slice(0, 10).map(function(e) { return '&nbsp;&nbsp;' + e.from; }).join('<br>') +
-                    (incoming.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (incoming.length - 10) + ' more' : '');
-                infoPanel.style.display = 'block';
-            });
-
-            network.on('deselectNode', function(params) {
-                // Restore original edge colors
-                Object.keys(originalColors).forEach(function(edgeId) {
-                    edges.update({id: edgeId, color: originalColors[edgeId], width: 1});
-                });
-                originalColors = {};
-                infoPanel.style.display = 'none';
-            });
-
-        }, 500);
-    });
-    </script>
-    """
-
-    # Insert before closing body tag
-    html = html.replace("</body>", custom_script + "</body>")
-
-    with open(output_file, "w") as f:
-        f.write(html)
 
 
 def generate_dot(
