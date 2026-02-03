@@ -248,8 +248,8 @@ def compute_positions(
     angles: dict[str, float],
     header_to_depth: dict[str, int],
     edges: dict[str, set[str]] | None = None,
-    min_node_spacing: float = 50,
-    min_ring_gap: float = 50,
+    min_node_spacing: float = 20,
+    min_ring_gap: float = 30,
 ) -> dict[str, tuple[float, float, float]]:
     """Compute final (x, y, angle) positions with adaptive ring radii.
 
