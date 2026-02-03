@@ -135,6 +135,22 @@ def render_graph(
     header_to_name: dict[str, str] = {}
     node_data: dict[str, dict] = {}  # For JS toggle
 
+    # Detect basename collisions and create unique display names
+    from collections import Counter
+    basenames = [Path(h).name for h in visible_nodes]
+    basename_counts = Counter(basenames)
+    colliding_basenames = {name for name, count in basename_counts.items() if count > 1}
+
+    def get_display_name(header: str) -> str:
+        """Get unique display name, using parent/name for collisions."""
+        basename = Path(header).name
+        if basename in colliding_basenames:
+            # Use last two path components for disambiguation
+            parts = Path(header).parts
+            if len(parts) >= 2:
+                return f"{parts[-2]}/{parts[-1]}"
+        return basename
+
     # Add root node at center if provided
     if root_name:
         net.add_node(
@@ -154,7 +170,7 @@ def render_graph(
         if header not in visible_nodes:
             continue
 
-        name = Path(header).name
+        name = get_display_name(header)
         header_to_name[header] = name
         count = include_counts.get(header, 0)
 
