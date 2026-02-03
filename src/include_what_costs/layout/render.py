@@ -364,6 +364,8 @@ def _inject_highlight_script(
     var timeThresholds = {time_thresholds_json};
     var hasBenchmarkData = {'true' if has_benchmark_data else 'false'};
     var currentMode = hasBenchmarkData ? 'rss' : 'count';
+    var focusMode = false;
+    var hiddenNodes = new Set();
 
     // Create rotated label SVG (mirrors Python implementation)
     function createRotatedLabelSvg(label, angle, color, fontSize) {{
@@ -482,19 +484,24 @@ def _inject_highlight_script(
         setTimeout(function() {{
             if (typeof network === 'undefined') return;
 
-            // Create toggle UI (only if benchmark data exists)
+            // Create toggle UI
+            var togglePanel = document.createElement('div');
+            togglePanel.id = 'togglePanel';
+            var panelHtml = '<div style="position:fixed;top:10px;left:10px;padding:10px;background:white;border:1px solid #ccc;border-radius:5px;font-family:sans-serif;font-size:12px;z-index:1000;box-shadow:0 2px 10px rgba(0,0,0,0.1);">';
             if (hasBenchmarkData) {{
-                var togglePanel = document.createElement('div');
-                togglePanel.id = 'togglePanel';
-                togglePanel.innerHTML = '<div style="position:fixed;top:10px;left:10px;padding:10px;background:white;border:1px solid #ccc;border-radius:5px;font-family:sans-serif;font-size:12px;z-index:1000;box-shadow:0 2px 10px rgba(0,0,0,0.1);">' +
-                    '<div style="font-weight:bold;margin-bottom:8px;">Color by:</div>' +
+                panelHtml += '<div style="font-weight:bold;margin-bottom:8px;">Color by:</div>' +
                     '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="count"> Include count</label>' +
                     '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="rss" checked> RSS memory</label>' +
                     '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="time"> Compile time</label>' +
-                    '</div>';
-                document.body.appendChild(togglePanel);
+                    '<div style="border-top:1px solid #eee;margin-top:8px;padding-top:8px;"></div>';
+            }}
+            panelHtml += '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="checkbox" id="focusModeCheckbox"> Focus on selection</label>' +
+                '</div>';
+            togglePanel.innerHTML = panelHtml;
+            document.body.appendChild(togglePanel);
 
-                // Add event listeners to radio buttons
+            // Add event listeners to radio buttons
+            if (hasBenchmarkData) {{
                 var radios = document.querySelectorAll('input[name="colorMode"]');
                 radios.forEach(function(radio) {{
                     radio.addEventListener('change', function() {{
@@ -506,10 +513,24 @@ def _inject_highlight_script(
                 updateNodeColors('rss');
             }}
 
-            // Create info panel (left side, below toggle if present)
+            // Focus mode checkbox
+            document.getElementById('focusModeCheckbox').addEventListener('change', function() {{
+                focusMode = this.checked;
+                // If turning off focus mode, restore all hidden nodes
+                if (!focusMode && hiddenNodes.size > 0) {{
+                    var restoreUpdates = [];
+                    hiddenNodes.forEach(function(nodeId) {{
+                        restoreUpdates.push({{id: nodeId, hidden: false}});
+                    }});
+                    nodes.update(restoreUpdates);
+                    hiddenNodes.clear();
+                }}
+            }});
+
+            // Create info panel (left side, below toggle panel)
             var infoPanel = document.createElement('div');
             infoPanel.id = 'infoPanel';
-            var infoPanelTop = hasBenchmarkData ? '140px' : '10px';
+            var infoPanelTop = hasBenchmarkData ? '170px' : '70px';
             infoPanel.style.cssText = 'position:fixed;top:' + infoPanelTop + ';left:10px;padding:15px;background:white;border:1px solid #ccc;border-radius:5px;font-family:monospace;font-size:12px;max-width:400px;display:none;z-index:1000;box-shadow:0 2px 10px rgba(0,0,0,0.1);';
             document.body.appendChild(infoPanel);
 
@@ -610,6 +631,20 @@ def _inject_highlight_script(
                 // Single batched update
                 edges.update(edgeUpdates);
 
+                // Focus mode: hide nodes not in downstream subgraph
+                if (focusMode) {{
+                    var nodeUpdates = [];
+                    var allNodes = nodes.get();
+                    allNodes.forEach(function(node) {{
+                        var nodeId = node.id;
+                        if (nodeId !== selectedNode && !downstreamNodes.has(nodeId)) {{
+                            nodeUpdates.push({{id: nodeId, hidden: true}});
+                            hiddenNodes.add(nodeId);
+                        }}
+                    }});
+                    nodes.update(nodeUpdates);
+                }}
+
                 // Update info panel
                 infoPanel.innerHTML = '<strong>' + selectedNode + '</strong><br><br>' +
                     '<span style="color:#2ecc71">&#9654; Includes ' + directOutgoing.length + ' direct, ' + downstreamNodes.size + ' total:</span><br>' +
@@ -629,6 +664,17 @@ def _inject_highlight_script(
                 }});
                 edges.update(restoreUpdates);
                 originalColors = {{}};
+
+                // Restore hidden nodes
+                if (hiddenNodes.size > 0) {{
+                    var nodeRestoreUpdates = [];
+                    hiddenNodes.forEach(function(nodeId) {{
+                        nodeRestoreUpdates.push({{id: nodeId, hidden: false}});
+                    }});
+                    nodes.update(nodeRestoreUpdates);
+                    hiddenNodes.clear();
+                }}
+
                 infoPanel.style.display = 'none';
             }});
 
