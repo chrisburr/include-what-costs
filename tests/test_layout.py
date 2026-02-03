@@ -161,28 +161,59 @@ class TestComputePositions:
         assert abs(b_radius - c_radius) < 0.01
 
     def test_custom_radii_parameters(self, simple_chain):
-        """Custom base_radius and ring_spacing should be respected."""
+        """Custom min_ring_gap should be respected."""
         edges, direct_includes = simple_chain
         _, header_to_depth = compute_depths(edges, direct_includes)
         classified = classify_edges(edges, header_to_depth)
         layout_graph = build_layout_graph(edges, header_to_depth, classified)
         angles = extract_angles(layout_graph)
 
-        base_radius = 200
-        ring_spacing = 50
-        positions = compute_positions(angles, header_to_depth, base_radius, ring_spacing)
+        min_ring_gap = 50
+        positions = compute_positions(
+            angles, header_to_depth, min_node_spacing=80, min_ring_gap=min_ring_gap
+        )
 
-        # Check A at depth 1
+        # With 1 node per depth, radii are determined by min_ring_gap
+        # Depth 1: 50, Depth 2: 100, Depth 3: 150
         ax, ay = positions["A"]
         a_radius = math.sqrt(ax**2 + ay**2)
-        assert abs(a_radius - 200) < 0.01  # base_radius
+        assert abs(a_radius - 50) < 0.01
 
-        # Check B at depth 2
         bx, by = positions["B"]
         b_radius = math.sqrt(bx**2 + by**2)
-        assert abs(b_radius - 250) < 0.01  # base_radius + 1 * ring_spacing
+        assert abs(b_radius - 100) < 0.01
 
-        # Check C at depth 3
         cx, cy = positions["C"]
         c_radius = math.sqrt(cx**2 + cy**2)
-        assert abs(c_radius - 300) < 0.01  # base_radius + 2 * ring_spacing
+        assert abs(c_radius - 150) < 0.01
+
+    def test_adaptive_radius_for_dense_rings(self):
+        """Rings with many nodes should have larger radii."""
+        # Create a graph where depth 2 has many nodes
+        edges = {
+            "root": {"A", "B", "C", "D", "E", "F", "G", "H"},
+            "A": set(),
+            "B": set(),
+            "C": set(),
+            "D": set(),
+            "E": set(),
+            "F": set(),
+            "G": set(),
+            "H": set(),
+        }
+        direct_includes = {"root"}
+        _, header_to_depth = compute_depths(edges, direct_includes)
+        classified = classify_edges(edges, header_to_depth)
+        layout_graph = build_layout_graph(edges, header_to_depth, classified)
+        angles = extract_angles(layout_graph)
+
+        min_node_spacing = 80
+        positions = compute_positions(
+            angles, header_to_depth, min_node_spacing=min_node_spacing, min_ring_gap=100
+        )
+
+        # Depth 2 has 8 nodes, minimum radius = 8 * 80 / (2π) ≈ 101.9
+        # But min_ring_gap ensures it's at least 200 (100 + 100)
+        # So depth 2 radius should be 200
+        a_radius = math.sqrt(positions["A"][0] ** 2 + positions["A"][1] ** 2)
+        assert a_radius >= 200 - 0.01

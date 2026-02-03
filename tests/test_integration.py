@@ -164,7 +164,7 @@ class TestFullPipeline:
                 )
 
     def test_concentric_radius_invariant(self, complex_graph):
-        """Positions should satisfy distance ≈ ring_radius[depth]."""
+        """All nodes at the same depth should have the same radius."""
         edges, direct_includes = complex_graph
 
         headers_by_depth, header_to_depth = compute_depths(edges, direct_includes)
@@ -172,21 +172,31 @@ class TestFullPipeline:
         layout_graph = build_layout_graph(edges, header_to_depth, classified)
         angles = extract_angles(layout_graph)
 
-        base_radius = 150
-        ring_spacing = 75
-        positions = compute_positions(
-            angles, header_to_depth, base_radius, ring_spacing
-        )
+        positions = compute_positions(angles, header_to_depth)
 
+        # Group radii by depth
+        radii_by_depth: dict[int, list[float]] = {}
         for header, (x, y) in positions.items():
             depth = header_to_depth[header]
-            expected_radius = base_radius + (depth - 1) * ring_spacing
-            actual_radius = math.sqrt(x**2 + y**2)
+            radius = math.sqrt(x**2 + y**2)
+            if depth not in radii_by_depth:
+                radii_by_depth[depth] = []
+            radii_by_depth[depth].append(radius)
 
-            # Allow small floating point tolerance
-            assert abs(actual_radius - expected_radius) < 0.01, (
-                f"Node {header} at depth {depth}: "
-                f"expected radius {expected_radius}, got {actual_radius}"
+        # All nodes at the same depth should have the same radius
+        for depth, radii in radii_by_depth.items():
+            first_radius = radii[0]
+            for radius in radii:
+                assert abs(radius - first_radius) < 0.01, (
+                    f"Nodes at depth {depth} have different radii"
+                )
+
+        # Radii should increase with depth
+        sorted_depths = sorted(radii_by_depth.keys())
+        for i in range(len(sorted_depths) - 1):
+            d1, d2 = sorted_depths[i], sorted_depths[i + 1]
+            assert radii_by_depth[d1][0] < radii_by_depth[d2][0], (
+                f"Depth {d1} radius should be less than depth {d2} radius"
             )
 
 

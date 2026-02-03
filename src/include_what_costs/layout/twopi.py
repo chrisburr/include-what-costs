@@ -103,28 +103,100 @@ def extract_angles(layout_graph: nx.DiGraph) -> dict[str, float]:
     return angles
 
 
+def redistribute_angles(
+    angles: dict[str, float],
+    header_to_depth: dict[str, int],
+) -> dict[str, float]:
+    """Redistribute angles evenly while preserving relative order from twopi.
+
+    For each depth level, nodes are spread evenly around the circle but maintain
+    the same relative angular ordering that twopi computed. This reduces overlap
+    while keeping related nodes near each other.
+
+    Args:
+        angles: Original angles from twopi layout.
+        header_to_depth: Mapping from header to its depth.
+
+    Returns:
+        New angles with even spacing per depth level.
+    """
+    # Group nodes by depth
+    nodes_by_depth: dict[int, list[str]] = {}
+    for header, depth in header_to_depth.items():
+        if header not in angles:
+            continue
+        if depth not in nodes_by_depth:
+            nodes_by_depth[depth] = []
+        nodes_by_depth[depth].append(header)
+
+    new_angles: dict[str, float] = {}
+
+    for depth, nodes in nodes_by_depth.items():
+        if len(nodes) == 1:
+            # Single node keeps its angle
+            new_angles[nodes[0]] = angles[nodes[0]]
+            continue
+
+        # Sort nodes by their original angle to preserve relative order
+        nodes_sorted = sorted(nodes, key=lambda h: angles[h])
+
+        # Redistribute evenly around the circle, starting from top (-pi/2)
+        n = len(nodes_sorted)
+        for i, header in enumerate(nodes_sorted):
+            new_angles[header] = 2 * math.pi * i / n - math.pi / 2
+
+    return new_angles
+
+
 def compute_positions(
     angles: dict[str, float],
     header_to_depth: dict[str, int],
-    base_radius: float = 100,
-    ring_spacing: float = 100,
+    min_node_spacing: float = 80,
+    min_ring_gap: float = 100,
 ) -> dict[str, tuple[float, float]]:
-    """Compute final (x, y) positions with strict concentric radii.
+    """Compute final (x, y) positions with adaptive ring radii.
+
+    Ring radii are computed to ensure adequate spacing between nodes:
+    - Each ring is large enough that arc length between nodes >= min_node_spacing
+    - Each ring is at least min_ring_gap further out than the previous ring
 
     Args:
         angles: Angle for each header in radians.
         header_to_depth: Mapping from header to its depth.
-        base_radius: Radius of the first ring (depth 1).
-        ring_spacing: Distance between consecutive rings.
+        min_node_spacing: Minimum pixels between adjacent nodes on a ring.
+        min_ring_gap: Minimum gap between consecutive rings.
 
     Returns:
         Dictionary mapping header to (x, y) position.
     """
+    # Redistribute angles to even spacing while preserving order
+    redistributed = redistribute_angles(angles, header_to_depth)
+
+    # Group nodes by depth to count nodes per ring
+    nodes_by_depth: dict[int, list[str]] = {}
+    for header, depth in header_to_depth.items():
+        if header not in redistributed:
+            continue
+        if depth not in nodes_by_depth:
+            nodes_by_depth[depth] = []
+        nodes_by_depth[depth].append(header)
+
+    # Compute adaptive radii for each depth
+    # Arc length = 2π × radius / n_nodes >= min_node_spacing
+    # Therefore: radius >= n_nodes × min_node_spacing / (2π)
+    ring_radii: dict[int, float] = {}
+    current_radius = 0.0
+    for depth in sorted(nodes_by_depth.keys()):
+        n_nodes = len(nodes_by_depth[depth])
+        min_radius_for_spacing = n_nodes * min_node_spacing / (2 * math.pi)
+        ring_radii[depth] = max(current_radius + min_ring_gap, min_radius_for_spacing)
+        current_radius = ring_radii[depth]
+
     positions: dict[str, tuple[float, float]] = {}
 
-    for header, angle in angles.items():
+    for header, angle in redistributed.items():
         depth = header_to_depth.get(header, 1)
-        radius = base_radius + (depth - 1) * ring_spacing
+        radius = ring_radii.get(depth, min_ring_gap)
         x = radius * math.cos(angle)
         y = radius * math.sin(angle)
         positions[header] = (x, y)
