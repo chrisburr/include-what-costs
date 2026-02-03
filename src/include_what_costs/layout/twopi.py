@@ -249,18 +249,20 @@ def compute_positions(
     header_to_depth: dict[str, int],
     edges: dict[str, set[str]] | None = None,
     min_ring_gap: float = 40,
+    gap_ratio: float = 0.15,
 ) -> dict[str, tuple[float, float, float]]:
     """Compute final (x, y, angle) positions with adaptive ring radii.
 
     Ring radii are computed to ensure labels don't overlap:
     - Arc length between adjacent nodes >= label height (labels are rotated radially)
-    - Each ring is at least min_ring_gap further out than previous
+    - Each ring has a gap that scales with radius to maintain visual hierarchy
 
     Args:
         angles: Angle for each header in radians.
         header_to_depth: Mapping from header to its depth.
         edges: Optional adjacency list for aligning rings to parents.
         min_ring_gap: Minimum gap between consecutive rings.
+        gap_ratio: Additional gap as fraction of previous radius (0.15 = 15%).
 
     Returns:
         Dictionary mapping header to (x, y, angle) position.
@@ -295,6 +297,7 @@ def compute_positions(
     ring_radii: dict[int, float] = {}
     prev_radius = 0.0
 
+    print(f"\n=== Ring radii calculation (label_height={label_height:.1f}, min_ring_gap={min_ring_gap}, gap_ratio={gap_ratio}) ===")
     for depth in sorted(nodes_by_depth.keys()):
         n_nodes = len(nodes_by_depth[depth])
 
@@ -302,10 +305,14 @@ def compute_positions(
         # Using label_height since labels are rotated radially
         min_for_labels = n_nodes * label_height / (2 * math.pi)
 
-        # Minimum radius to stay outside previous ring with adequate gap
-        min_for_gap = prev_radius + min_ring_gap
+        # Minimum radius to stay outside previous ring with proportional gap
+        # Gap scales with radius to maintain visual hierarchy when inner rings expand
+        gap = min_ring_gap + prev_radius * gap_ratio
+        min_for_gap = prev_radius + gap
 
         ring_radii[depth] = max(min_for_labels, min_for_gap)
+        constraint = "LABELS" if min_for_labels > min_for_gap else "GAP"
+        print(f"  depth {depth}: {n_nodes} nodes, min_for_labels={min_for_labels:.1f}, min_for_gap={min_for_gap:.1f} (gap={gap:.1f}) -> radius={ring_radii[depth]:.1f} ({constraint})")
         prev_radius = ring_radii[depth]
 
     positions: dict[str, tuple[float, float, float]] = {}
