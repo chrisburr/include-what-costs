@@ -486,15 +486,16 @@ def _inject_highlight_script(
                 }});
             }}
 
-            // Create info panel
+            // Create info panel (left side, below toggle if present)
             var infoPanel = document.createElement('div');
             infoPanel.id = 'infoPanel';
-            infoPanel.style.cssText = 'position:fixed;top:10px;right:10px;padding:15px;background:white;border:1px solid #ccc;border-radius:5px;font-family:monospace;font-size:12px;max-width:400px;display:none;z-index:1000;box-shadow:0 2px 10px rgba(0,0,0,0.1);';
+            var infoPanelTop = hasBenchmarkData ? '140px' : '10px';
+            infoPanel.style.cssText = 'position:fixed;top:' + infoPanelTop + ';left:10px;padding:15px;background:white;border:1px solid #ccc;border-radius:5px;font-family:monospace;font-size:12px;max-width:400px;display:none;z-index:1000;box-shadow:0 2px 10px rgba(0,0,0,0.1);';
             document.body.appendChild(infoPanel);
 
-            // Create legend
+            // Create legend (upper right, floating)
             var legend = document.createElement('div');
-            legend.innerHTML = '<div style="position:fixed;bottom:10px;right:10px;padding:10px;background:white;border:1px solid #ccc;border-radius:5px;font-family:sans-serif;font-size:11px;">' +
+            legend.innerHTML = '<div style="position:fixed;top:10px;right:10px;padding:10px;background:white;border:1px solid #ccc;border-radius:5px;font-family:sans-serif;font-size:11px;z-index:1000;box-shadow:0 2px 10px rgba(0,0,0,0.1);">' +
                 '<div style="font-weight:bold;margin-bottom:5px;">Node colors:</div>' +
                 '<div id="colorLegendContent">' +
                 '<div><span class="legend-color" style="background:#ff6b6b;"></span> &gt;10 includes</div>' +
