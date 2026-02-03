@@ -8,7 +8,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 from .benchmark import benchmark_header, get_preprocessed_size
-from .graph import extract_compile_flags, parse_gcc_h_output, run_gcc_h
+from .graph import extract_compile_flags, parse_gcc_h_output, run_gcc_h, supplement_edges_from_parsing
 from .parse_header import parse_includes
 from .visualize import generate_csv, generate_dot, generate_html, generate_json, generate_summary
 
@@ -119,6 +119,11 @@ def main() -> None:
     graph = parse_gcc_h_output(output)
     graph.root = str(args.root)  # Store root header path
     print(f"Found {len(graph.all_headers)} unique headers")
+
+    # Supplement edges by parsing headers directly (gcc -H misses some)
+    added = supplement_edges_from_parsing(graph)
+    if added:
+        print(f"Added {added} edges from direct header parsing")
 
     # Parse direct includes from root header file (more accurate than gcc -H depth tracking)
     direct_includes = parse_includes(args.root)

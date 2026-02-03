@@ -108,6 +108,58 @@ def run_gcc_h(
         return result.stderr
 
 
+def supplement_edges_from_parsing(graph: IncludeGraph) -> int:
+    """Add missing edges by parsing #include directives directly from headers.
+
+    gcc -H only shows the first time each header is included, so edges can be
+    missing when a header is included by multiple parents. This function parses
+    each header file directly to find all #include directives and adds any
+    missing edges.
+
+    Args:
+        graph: The include graph to supplement.
+
+    Returns:
+        Number of edges added.
+    """
+    from .parse_header import parse_includes
+
+    # Build a lookup from include paths to full paths
+    # e.g., "Functors/Function.h" -> "/full/path/.../Functors/Function.h"
+    include_to_full: dict[str, str] = {}
+    for header in graph.all_headers:
+        # Add various suffix lengths for matching
+        parts = Path(header).parts
+        for i in range(1, min(len(parts) + 1, 6)):  # Up to 5 path components
+            suffix = "/".join(parts[-i:])
+            # Only store if not already mapped (prefer shorter suffixes)
+            if suffix not in include_to_full:
+                include_to_full[suffix] = header
+
+    edges_added = 0
+
+    for header in graph.all_headers:
+        header_path = Path(header)
+        if not header_path.exists():
+            continue
+
+        try:
+            includes = parse_includes(header_path)
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        for inc in includes:
+            # Try to resolve the include to a known full path
+            target = include_to_full.get(inc)
+            if target and target != header:
+                # Check if this edge is missing
+                if target not in graph.edges.get(header, set()):
+                    graph.edges[header].add(target)
+                    edges_added += 1
+
+    return edges_added
+
+
 def _compute_depths_bfs(graph: IncludeGraph) -> None:
     """Compute minimum depths using BFS from root through edges.
 
