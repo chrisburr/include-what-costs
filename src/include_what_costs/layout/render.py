@@ -246,7 +246,7 @@ def render_graph(
             fixed=True,
             shape="image",
             image=svg_url,
-            size=15 if is_intermediate else 25,
+            shapeProperties={"useImageSize": True},
             font={"size": 0},  # Hide any text label
         )
 
