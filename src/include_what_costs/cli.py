@@ -2,10 +2,12 @@
 
 import argparse
 import json
+import os
 import tempfile
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from .benchmark import benchmark_header
+from .benchmark import benchmark_header, get_preprocessed_size
 from .graph import extract_compile_flags, parse_gcc_h_output, run_gcc_h
 from .parse_header import parse_includes
 from .visualize import generate_csv, generate_dot, generate_html, generate_json, generate_summary
@@ -64,6 +66,12 @@ def main() -> None:
         action="store_true",
         help="Skip header cost benchmarking",
     )
+    parser.add_argument(
+        "--benchmark-limit",
+        type=int,
+        metavar="N",
+        help="Benchmark only the N largest headers (by depth, then preprocessed size)",
+    )
     parser.add_argument("--config", type=Path, help="Path to YAML config file")
 
     args = parser.parse_args()
@@ -81,6 +89,8 @@ def main() -> None:
             args.wrapper = config["wrapper"]
         if not args.prefix and "prefix" in config:
             args.prefix = config["prefix"]
+        if args.benchmark_limit is None and "benchmark-limit" in config:
+            args.benchmark_limit = config["benchmark-limit"]
 
     # Validate required arguments
     if not args.root:
@@ -124,14 +134,57 @@ def main() -> None:
     # Benchmark headers
     results = None
     if not args.no_benchmark:
-        direct_includes = parse_includes(args.root)
-        print(f"\nBenchmarking {len(direct_includes)} direct includes...")
+        # Determine which headers to benchmark
+        if args.benchmark_limit is not None:
+            # Select top N headers from all candidates
+            candidates = list(graph.all_headers)
+            if args.prefix:
+                candidates = [h for h in candidates if h.startswith(args.prefix)]
+
+            print(f"\nSelecting top {args.benchmark_limit} headers from {len(candidates)} candidates...")
+
+            # Compute (depth, preprocessed_size) for each candidate in parallel
+            header_metrics: list[tuple[str, int, int]] = []
+            num_workers = min(os.cpu_count() or 4, len(candidates))
+            print(f"Measuring preprocessed sizes with {num_workers} workers...")
+
+            with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                # Submit all tasks
+                future_to_header = {
+                    executor.submit(get_preprocessed_size, header, flags, args.wrapper): header
+                    for header in candidates
+                }
+
+                # Collect results as they complete
+                for i, future in enumerate(as_completed(future_to_header)):
+                    header = future_to_header[future]
+                    depth = graph.header_depths.get(header, 999)
+                    try:
+                        size = future.result()
+                    except Exception:
+                        size = 0
+                    header_metrics.append((header, depth, size))
+                    print(f"[{i + 1}/{len(candidates)}] depth={depth}, size={size:,}: {header}")
+
+            # Sort by (depth ascending, size descending)
+            header_metrics.sort(key=lambda x: (x[1], -x[2]))
+
+            # Take top N
+            headers_to_benchmark = [h for h, _, _ in header_metrics[: args.benchmark_limit]]
+            print(f"\nSelected {len(headers_to_benchmark)} headers for benchmarking:")
+            for h, d, s in header_metrics[: args.benchmark_limit]:
+                print(f"  depth={d}, size={s:,}: {h}")
+        else:
+            # Default behavior: benchmark direct includes only
+            headers_to_benchmark = list(parse_includes(args.root))
+
+        print(f"\nBenchmarking {len(headers_to_benchmark)} headers...")
 
         work_dir = Path(tempfile.mkdtemp(prefix="iwc_"))
         results = []
 
-        for i, header in enumerate(direct_includes):
-            print(f"[{i + 1}/{len(direct_includes)}] {header}...", end=" ", flush=True)
+        for i, header in enumerate(headers_to_benchmark):
+            print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}...", end=" ", flush=True)
             r = benchmark_header(header, flags, work_dir, "prmon", args.wrapper)
             results.append(r.__dict__)
 

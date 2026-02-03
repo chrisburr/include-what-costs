@@ -1,7 +1,9 @@
 """Benchmark compile cost of individual headers."""
 
 import json
+import shlex
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -104,3 +106,44 @@ def benchmark_header(
             success=False,
             error=str(e),
         )
+
+
+def get_preprocessed_size(
+    header: str,
+    compile_flags: str,
+    wrapper: str | None = None,
+) -> int:
+    """Get size of preprocessed output for a header via gcc -E.
+
+    Creates a minimal .cpp file that includes the header and measures
+    the size of the preprocessed output.
+
+    Args:
+        header: Header name to measure.
+        compile_flags: Base compile command with flags.
+        wrapper: Optional wrapper command (e.g., "./Rec/run").
+
+    Returns:
+        Size of preprocessed output in bytes, or 0 on error.
+    """
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".cpp", delete=False
+    ) as f:
+        f.write(f'#include "{header}"\n')
+        test_cpp = f.name
+
+    try:
+        gcc_cmd = f"g++ -E {compile_flags} {test_cpp}"
+        if wrapper:
+            cmd = f"{wrapper} bash -c {shlex.quote(gcc_cmd)}"
+        else:
+            cmd = gcc_cmd
+
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, timeout=60
+        )
+        return len(result.stdout) if result.returncode == 0 else 0
+    except (subprocess.TimeoutExpired, Exception):
+        return 0
+    finally:
+        Path(test_cpp).unlink(missing_ok=True)
