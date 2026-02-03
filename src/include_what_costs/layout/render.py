@@ -151,7 +151,7 @@ def render_graph(
 
         net.add_node(
             name,
-            label="",  # No text label, using image
+            label=" ",  # Space to suppress default label
             title=f"{header}\nIncluded {count}x",
             x=x,
             y=y,
@@ -159,6 +159,7 @@ def render_graph(
             shape="image",
             image=svg_url,
             size=15 if is_intermediate else 25,
+            font={"size": 0},  # Hide any text label
         )
 
     # Edge styles by type
