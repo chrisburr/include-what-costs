@@ -221,10 +221,10 @@ def render_graph(
 
     # Edge styles by type
     edge_styles = {
-        EdgeType.TREE: {"color": "#cccccc", "width": 1},  # light gray, straight
-        EdgeType.BACK: {"color": "rgba(255,0,0,0.3)", "width": 1},  # red, lower opacity
-        EdgeType.SAME_LEVEL: {"color": "rgba(0,0,255,0.3)", "width": 1},  # blue, lower opacity
-        EdgeType.FORWARD_SKIP: {"color": "rgba(128,0,128,0.3)", "width": 1},  # purple
+        EdgeType.TREE: {"color": "#cccccc", "width": 0.5},  # light gray, straight
+        EdgeType.BACK: {"color": "rgba(255,0,0,0.3)", "width": 0.5},  # red, lower opacity
+        EdgeType.SAME_LEVEL: {"color": "rgba(0,0,255,0.3)", "width": 0.5},  # blue, lower opacity
+        EdgeType.FORWARD_SKIP: {"color": "rgba(128,0,128,0.3)", "width": 0.5},  # purple
     }
 
     # Add edges by type
@@ -279,10 +279,11 @@ def render_graph(
             "tooltipDelay": 100
         },
         "edges": {
-            "arrows": {"to": {"enabled": true, "scaleFactor": 0.5}},
+            "arrows": {"to": {"enabled": true, "scaleFactor": 0.3}},
             "smooth": {"type": "continuous"},
-            "selectionWidth": 2,
-            "hoverWidth": 2
+            "width": 0.5,
+            "selectionWidth": 1.5,
+            "hoverWidth": 1.5
         },
         "nodes": {
             "borderWidth": 1,
@@ -549,10 +550,10 @@ def _inject_highlight_script(
 
                     if (edge.to === selectedNode) {{
                         incoming.push({{edge: edgeId, from: edge.from}});
-                        edges.update({{id: edgeId, color: {{color: '#3498db', highlight: '#3498db'}}, width: 2}});
+                        edges.update({{id: edgeId, color: {{color: '#3498db', highlight: '#3498db'}}, width: 1.5}});
                     }} else {{
                         outgoing.push({{edge: edgeId, to: edge.to}});
-                        edges.update({{id: edgeId, color: {{color: '#2ecc71', highlight: '#2ecc71'}}, width: 2}});
+                        edges.update({{id: edgeId, color: {{color: '#2ecc71', highlight: '#2ecc71'}}, width: 1.5}});
                     }}
                 }});
 
@@ -571,7 +572,7 @@ def _inject_highlight_script(
             network.on('deselectNode', function(params) {{
                 // Restore original edge colors
                 Object.keys(originalColors).forEach(function(edgeId) {{
-                    edges.update({{id: edgeId, color: originalColors[edgeId], width: 1}});
+                    edges.update({{id: edgeId, color: originalColors[edgeId], width: 0.5}});
                 }});
                 originalColors = {{}};
                 infoPanel.style.display = 'none';
