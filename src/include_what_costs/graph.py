@@ -158,14 +158,22 @@ def supplement_edges_from_parsing(graph: IncludeGraph) -> int:
 
     # Build a lookup from include paths to full paths
     # e.g., "Functors/Function.h" -> "/full/path/.../Functors/Function.h"
+    # Track ambiguous suffixes that map to multiple different headers
     include_to_full: dict[str, str] = {}
+    ambiguous_suffixes: set[str] = set()
     for header in graph.all_headers:
         # Add various suffix lengths for matching
         parts = Path(header).parts
         for i in range(1, min(len(parts) + 1, 6)):  # Up to 5 path components
             suffix = "/".join(parts[-i:])
-            # Only store if not already mapped (prefer shorter suffixes)
-            if suffix not in include_to_full:
+            if suffix in ambiguous_suffixes:
+                continue
+            if suffix in include_to_full:
+                # This suffix maps to multiple headers - mark as ambiguous
+                if include_to_full[suffix] != header:
+                    ambiguous_suffixes.add(suffix)
+                    del include_to_full[suffix]
+            else:
                 include_to_full[suffix] = header
 
     edges_added = 0
