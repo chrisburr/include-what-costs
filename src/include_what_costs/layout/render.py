@@ -324,8 +324,9 @@ def render_graph(
             "arrows": {"to": {"enabled": true, "scaleFactor": 0.3}},
             "smooth": {"type": "continuous"},
             "width": 0.5,
-            "selectionWidth": 1.5,
-            "hoverWidth": 1.5
+            "selectionWidth": 0,
+            "hoverWidth": 1.5,
+            "chosen": false
         },
         "nodes": {
             "borderWidth": 1,
@@ -703,6 +704,14 @@ def _inject_highlight_script(
                 }}
 
                 infoPanel.style.display = 'none';
+            }});
+
+            // Prevent edge selection - immediately deselect if an edge is clicked
+            network.on('selectEdge', function(params) {{
+                if (params.nodes.length === 0) {{
+                    // Edge-only selection, deselect it
+                    network.unselectAll();
+                }}
             }});
 
         }}, 500);
