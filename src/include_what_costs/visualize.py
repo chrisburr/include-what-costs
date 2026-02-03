@@ -65,20 +65,37 @@ def generate_html(
     # Classify edges by type
     classified = classify_edges(edges, header_to_depth)
 
-    # Build layout graph and extract angles
-    layout_graph = build_layout_graph(edges, header_to_depth, classified)
-    angles = extract_angles(layout_graph)
-
-    # Compute positions with adaptive radii and ring alignment
-    positions = compute_positions(angles, header_to_depth, edges)
-
-    # Apply filter if specified
+    # Apply filter first if specified (so layout is computed for visible nodes only)
     filter_result = None
     if prefix:
         filter_result = apply_filter(edges, prefix, graph.all_headers)
         # Print any warnings about paths through external headers
         for warning in filter_result.warnings:
             print(f"Warning: {warning}")
+
+    # Determine which nodes will be visible
+    if filter_result:
+        visible_nodes = filter_result.included_nodes | filter_result.intermediate_nodes
+    else:
+        visible_nodes = set(header_to_depth.keys())
+
+    # Filter depths and edges to only visible nodes for layout computation
+    visible_depths = {h: d for h, d in header_to_depth.items() if h in visible_nodes}
+    visible_edges = {
+        parent: {child for child in children if child in visible_nodes}
+        for parent, children in edges.items()
+        if parent in visible_nodes
+    }
+
+    # Reclassify edges for visible nodes only
+    visible_classified = classify_edges(visible_edges, visible_depths)
+
+    # Build layout graph and extract angles for visible nodes only
+    layout_graph = build_layout_graph(visible_edges, visible_depths, visible_classified)
+    angles = extract_angles(layout_graph)
+
+    # Compute positions with adaptive radii and ring alignment
+    positions = compute_positions(angles, visible_depths, visible_edges)
 
     # Convert benchmark results to dict keyed by header
     benchmark_by_header: dict[str, dict] = {}
@@ -94,8 +111,8 @@ def generate_html(
     root_name = Path(graph.root).name if graph.root else None
     render_graph(
         positions=positions,
-        edges=edges,
-        classified_edges=classified,
+        edges=visible_edges,
+        classified_edges=visible_classified,
         filter_result=filter_result,
         include_counts=dict(graph.include_counts),
         output_path=output_file,
