@@ -155,14 +155,17 @@ def main() -> None:
         # Always include root header to show total compilation cost
         root_header = str(args.root)
 
-        if args.benchmark == -1:
-            # --benchmark without value: benchmark all headers
-            headers_to_benchmark = candidates + [root_header]
-            print(f"\nBenchmarking all {len(headers_to_benchmark)} headers")
-        elif args.benchmark >= len(candidates):
-            # N >= candidates: benchmark all, skip preprocessing
-            headers_to_benchmark = candidates + [root_header]
-            print(f"\nBenchmarking all {len(headers_to_benchmark)} headers (N={args.benchmark} >= {len(candidates)} candidates)")
+        if args.benchmark == -1 or args.benchmark >= len(candidates):
+            # Benchmark all headers, sorted by depth (lower depth = likely more expensive)
+            # Root header first, then by ascending depth
+            headers_to_benchmark = sorted(
+                candidates, key=lambda h: graph.header_depths.get(h, 999)
+            )
+            headers_to_benchmark.insert(0, root_header)
+            if args.benchmark == -1:
+                print(f"\nBenchmarking all {len(headers_to_benchmark)} headers")
+            else:
+                print(f"\nBenchmarking all {len(headers_to_benchmark)} headers (N={args.benchmark} >= {len(candidates)} candidates)")
         else:
             # --benchmark=N: select top N by (depth, preprocessed_size)
             print(f"\nSelecting top {args.benchmark} headers from {len(candidates)} candidates...")
@@ -197,14 +200,14 @@ def main() -> None:
                 # Sort by (depth ascending, size descending)
                 header_metrics.sort(key=lambda x: (x[1], -x[2]))
 
-                # Take top N
+                # Take top N (already sorted by depth asc, size desc)
                 headers_to_benchmark = [h for h, _, _ in header_metrics[: args.benchmark]]
                 print(f"\nSelected {len(headers_to_benchmark)} headers for benchmarking:")
                 for h, d, s in header_metrics[: args.benchmark]:
                     print(f"  depth={d}, size={s:,}: {h}")
 
-                # Add root header
-                headers_to_benchmark.append(root_header)
+                # Add root header at front (likely most expensive)
+                headers_to_benchmark.insert(0, root_header)
 
         if not headers_to_benchmark:
             print("\nNo headers to benchmark.")
