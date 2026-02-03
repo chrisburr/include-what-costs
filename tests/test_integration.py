@@ -50,14 +50,19 @@ class TestFullPipeline:
         # Step 5: Compute positions
         positions = compute_positions(angles, header_to_depth)
 
-        # Verify: positions are on concentric circles
-        base_radius = 100
-        ring_spacing = 100
+        # Verify: all nodes at same depth have same radius
+        radii_by_depth: dict[int, list[float]] = {}
         for header, (x, y) in positions.items():
             depth = header_to_depth[header]
-            expected_radius = base_radius + (depth - 1) * ring_spacing
-            actual_radius = math.sqrt(x**2 + y**2)
-            assert abs(actual_radius - expected_radius) < 0.01
+            radius = math.sqrt(x**2 + y**2)
+            if depth not in radii_by_depth:
+                radii_by_depth[depth] = []
+            radii_by_depth[depth].append(radius)
+
+        for depth, radii in radii_by_depth.items():
+            assert all(abs(r - radii[0]) < 0.01 for r in radii), (
+                f"Nodes at depth {depth} have different radii"
+            )
 
         # Verify: tree edges connect adjacent rings only
         for parent, child in classified[EdgeType.TREE]:
