@@ -59,15 +59,12 @@ def main() -> None:
         help="Wrapper command for gcc (e.g., ./Rec/run)",
     )
     parser.add_argument(
-        "--no-benchmark",
-        action="store_true",
-        help="Skip header cost benchmarking",
-    )
-    parser.add_argument(
-        "--benchmark-limit",
+        "--benchmark",
+        nargs="?",
+        const=-1,  # --benchmark without value means all
         type=int,
         metavar="N",
-        help="Benchmark only the N largest headers (by depth, then preprocessed size)",
+        help="Benchmark headers. Without N: all headers. With N: top N by (depth, preprocessed size)",
     )
     parser.add_argument("--config", type=Path, help="Path to YAML config file")
 
@@ -86,8 +83,12 @@ def main() -> None:
             args.wrapper = config["wrapper"]
         if not args.prefix and "prefix" in config:
             args.prefix = config["prefix"]
-        if args.benchmark_limit is None and "benchmark-limit" in config:
-            args.benchmark_limit = config["benchmark-limit"]
+        if args.benchmark is None and "benchmark" in config:
+            val = config["benchmark"]
+            if val is True or val == "all":
+                args.benchmark = -1  # all headers
+            elif isinstance(val, int):
+                args.benchmark = val
 
     # Validate required arguments
     if not args.root:
@@ -145,19 +146,30 @@ def main() -> None:
 
     # Benchmark headers
     results = None
-    if not args.no_benchmark:
-        # Determine which headers to benchmark
-        if args.benchmark_limit is not None:
-            # Select top N headers from all candidates
-            candidates = list(graph.all_headers)
-            if args.prefix:
-                candidates = [h for h in candidates if h.startswith(args.prefix)]
+    if args.benchmark is not None:
+        # Build candidate list
+        candidates = list(graph.all_headers)
+        if args.prefix:
+            candidates = [h for h in candidates if h.startswith(args.prefix)]
 
-            print(f"\nSelecting top {args.benchmark_limit} headers from {len(candidates)} candidates...")
+        # Always include root header to show total compilation cost
+        root_header = str(args.root)
+
+        if args.benchmark == -1:
+            # --benchmark without value: benchmark all headers
+            headers_to_benchmark = candidates + [root_header]
+            print(f"\nBenchmarking all {len(headers_to_benchmark)} headers")
+        elif args.benchmark >= len(candidates):
+            # N >= candidates: benchmark all, skip preprocessing
+            headers_to_benchmark = candidates + [root_header]
+            print(f"\nBenchmarking all {len(headers_to_benchmark)} headers (N={args.benchmark} >= {len(candidates)} candidates)")
+        else:
+            # --benchmark=N: select top N by (depth, preprocessed_size)
+            print(f"\nSelecting top {args.benchmark} headers from {len(candidates)} candidates...")
 
             if not candidates:
                 print("No candidates to benchmark after filtering.")
-                headers_to_benchmark = []
+                headers_to_benchmark = [root_header]
             else:
                 # Compute (depth, preprocessed_size) for each candidate in parallel
                 header_metrics: list[tuple[str, int, int]] = []
@@ -186,16 +198,13 @@ def main() -> None:
                 header_metrics.sort(key=lambda x: (x[1], -x[2]))
 
                 # Take top N
-                headers_to_benchmark = [h for h, _, _ in header_metrics[: args.benchmark_limit]]
+                headers_to_benchmark = [h for h, _, _ in header_metrics[: args.benchmark]]
                 print(f"\nSelected {len(headers_to_benchmark)} headers for benchmarking:")
-                for h, d, s in header_metrics[: args.benchmark_limit]:
+                for h, d, s in header_metrics[: args.benchmark]:
                     print(f"  depth={d}, size={s:,}: {h}")
-        else:
-            # Default behavior: benchmark direct includes only
-            headers_to_benchmark = list(parse_includes(args.root))
 
-        # Always include root header to show total compilation cost
-        headers_to_benchmark.append(str(args.root))
+                # Add root header
+                headers_to_benchmark.append(root_header)
 
         if not headers_to_benchmark:
             print("\nNo headers to benchmark.")
