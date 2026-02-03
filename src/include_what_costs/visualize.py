@@ -22,6 +22,7 @@ def generate_html(
     output_file: Path,
     prefix: str | None = None,
     direct_includes: list[str] | None = None,
+    benchmark_results: list[dict] | None = None,
 ) -> None:
     """Generate interactive HTML visualization using pyvis.
 
@@ -33,6 +34,7 @@ def generate_html(
         output_file: Path to write the HTML file.
         prefix: Only include headers under this path prefix.
         direct_includes: List of headers directly included by root (from parsing the file).
+        benchmark_results: Optional list of benchmark result dicts with header costs.
     """
     # Convert IncludeGraph edges to dict format expected by layout module
     edges = {k: set(v) for k, v in graph.edges.items()}
@@ -78,6 +80,16 @@ def generate_html(
         for warning in filter_result.warnings:
             print(f"Warning: {warning}")
 
+    # Convert benchmark results to dict keyed by header
+    benchmark_by_header: dict[str, dict] = {}
+    if benchmark_results:
+        for r in benchmark_results:
+            if r.get("success"):
+                benchmark_by_header[r["header"]] = {
+                    "rss_kb": r["max_rss_kb"],
+                    "time_s": r["wall_time_s"],
+                }
+
     # Render the graph
     root_name = Path(graph.root).name if graph.root else None
     render_graph(
@@ -88,6 +100,7 @@ def generate_html(
         include_counts=dict(graph.include_counts),
         output_path=output_file,
         root_name=root_name,
+        benchmark_data=benchmark_by_header,
     )
 
 

@@ -123,10 +123,9 @@ def main() -> None:
     # Parse direct includes from root header file (more accurate than gcc -H depth tracking)
     direct_includes = parse_includes(args.root)
 
-    # Generate graph outputs
+    # Generate JSON output (HTML generated after benchmarking to include results)
     generate_json(graph, args.output / "include_graph.json")
-    generate_html(graph, args.output / "include_graph.html", args.prefix, direct_includes)
-    print("Wrote include_graph.json and include_graph.html")
+    print("Wrote include_graph.json")
 
     # Benchmark headers
     results = None
@@ -228,6 +227,16 @@ def main() -> None:
             print("\n=== TOP 10 BY TIME ===")
             for r in sorted(ok, key=lambda x: -x["wall_time_s"])[:10]:
                 print(f"  {r['wall_time_s']:6.1f} s   {r['header']}")
+
+    # Generate HTML with benchmark data (if available)
+    generate_html(
+        graph,
+        args.output / "include_graph.html",
+        args.prefix,
+        direct_includes,
+        benchmark_results=results,
+    )
+    print("Wrote include_graph.html")
 
     # Generate summary
     generate_summary(graph, results, args.output / "summary.txt")
