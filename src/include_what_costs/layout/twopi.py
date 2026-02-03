@@ -297,7 +297,6 @@ def compute_positions(
     ring_radii: dict[int, float] = {}
     prev_radius = 0.0
 
-    print(f"\n=== Ring radii calculation (label_height={label_height:.1f}, min_ring_gap={min_ring_gap}, gap_ratio={gap_ratio}) ===")
     for depth in sorted(nodes_by_depth.keys()):
         n_nodes = len(nodes_by_depth[depth])
 
@@ -311,8 +310,6 @@ def compute_positions(
         min_for_gap = prev_radius + gap
 
         ring_radii[depth] = max(min_for_labels, min_for_gap)
-        constraint = "LABELS" if min_for_labels > min_for_gap else "GAP"
-        print(f"  depth {depth}: {n_nodes} nodes, min_for_labels={min_for_labels:.1f}, min_for_gap={min_for_gap:.1f} (gap={gap:.1f}) -> radius={ring_radii[depth]:.1f} ({constraint})")
         prev_radius = ring_radii[depth]
 
     positions: dict[str, tuple[float, float, float]] = {}
