@@ -194,6 +194,9 @@ def main() -> None:
             # Default behavior: benchmark direct includes only
             headers_to_benchmark = list(parse_includes(args.root))
 
+        # Always include root header to show total compilation cost
+        headers_to_benchmark.append(str(args.root))
+
         if not headers_to_benchmark:
             print("\nNo headers to benchmark.")
             results = []

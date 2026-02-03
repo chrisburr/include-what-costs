@@ -90,6 +90,7 @@ def render_graph(
     include_counts: dict[str, int],
     output_path: Path,
     root_name: str | None = None,
+    root_path: str | None = None,
     benchmark_data: dict[str, dict] | None = None,
 ) -> None:
     """Render graph with pyvis.
@@ -101,7 +102,8 @@ def render_graph(
         filter_result: Optional filter result for styling filtered nodes.
         include_counts: Number of times each header is included.
         output_path: Path to write the HTML file.
-        root_name: Optional name of the root file.
+        root_name: Optional display name of the root file.
+        root_path: Optional full path of the root file (for benchmark lookup).
         benchmark_data: Optional dict mapping header paths to {rss_kb, time_s}.
     """
     import json as json_module
@@ -153,10 +155,22 @@ def render_graph(
 
     # Add root node at center if provided
     if root_name:
+        # Look up benchmark data for root using full path
+        root_bench = benchmark_data.get(root_path, {}) if root_path else {}
+        root_rss_kb = root_bench.get("rss_kb", 0)
+        root_time_s = root_bench.get("time_s", 0)
+        root_has_bench = root_path in benchmark_data if root_path else False
+
+        # Build tooltip
+        tooltip_lines = [root_name, "(root)"]
+        if root_has_bench:
+            tooltip_lines.append(f"RSS: {root_rss_kb / 1024:.1f} MB")
+            tooltip_lines.append(f"Time: {root_time_s:.1f}s")
+
         net.add_node(
             root_name,
             label=root_name,
-            title=f"{root_name}\n(root)",
+            title="\n".join(tooltip_lines),
             x=0,
             y=0,
             fixed=True,
@@ -164,6 +178,18 @@ def render_graph(
             shape="box",
             font={"size": 12},
         )
+
+        # Store node data for JS toggle (root doesn't have count or angle)
+        node_data[root_name] = {
+            "name": root_name,
+            "count": 0,
+            "rss_kb": root_rss_kb,
+            "time_s": root_time_s,
+            "has_bench": root_has_bench,
+            "angle": 0,
+            "is_intermediate": False,
+            "is_root": True,
+        }
 
     # Add nodes
     for header, (x, y, angle) in positions.items():
@@ -425,6 +451,7 @@ def _inject_highlight_script(
         Object.keys(nodeData).forEach(function(nodeName) {{
             var data = nodeData[nodeName];
             if (data.is_intermediate) return;  // Skip intermediate nodes
+            if (data.is_root) return;  // Skip root node (uses box shape, not image)
 
             var color, label;
             var fontSize = 10;

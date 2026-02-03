@@ -117,6 +117,7 @@ def generate_html(
         include_counts=dict(graph.include_counts),
         output_path=output_file,
         root_name=root_name,
+        root_path=graph.root,
         benchmark_data=benchmark_by_header,
     )
 
