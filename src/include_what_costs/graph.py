@@ -61,7 +61,7 @@ def extract_compile_flags(
             if parts[i] == "-isystem" and i + 1 < len(parts):
                 flags.extend([parts[i], parts[i + 1]])
                 i += 2
-            elif parts[i].startswith(("-I", "-D", "-isystem")):
+            elif parts[i].startswith(("-I", "-D", "-isystem", "-std")):
                 flags.append(parts[i])
                 i += 1
             else:
@@ -76,7 +76,6 @@ def extract_compile_flags(
 def run_gcc_h(
     header_path: Path,
     compile_flags: str,
-    cxx_std: str = "c++20",
     wrapper: str | None = None,
 ) -> str:
     """Run gcc -H to extract include hierarchy.
@@ -84,13 +83,12 @@ def run_gcc_h(
     Args:
         header_path: Path to the header file to analyze.
         compile_flags: Compiler flags (includes, defines, etc.).
-        cxx_std: C++ standard to use.
         wrapper: Optional wrapper command (e.g., "./Rec/run").
 
     Returns:
         stderr output from gcc -H containing the include tree.
     """
-    gcc_cmd = f"g++ -H -E -std={cxx_std} {compile_flags} {header_path}"
+    gcc_cmd = f"g++ -H -E {compile_flags} {header_path}"
     if wrapper:
         # Wrap the gcc command in bash -c so the wrapper correctly passes all arguments
         # Redirect stderr to a temp file to avoid mixing with stdout

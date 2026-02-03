@@ -80,7 +80,7 @@ def benchmark_header(
                 max_rss_kb=metrics["Max"]["rss"],
                 wall_time_s=metrics["Max"]["wtime"],
                 success=result.returncode == 0,
-                error=None if result.returncode == 0 else result.stderr[:200],
+                error=None if result.returncode == 0 else result.stderr[-500:],
                 command=full_cmd,
             )
 
