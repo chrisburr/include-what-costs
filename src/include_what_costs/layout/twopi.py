@@ -148,9 +148,106 @@ def redistribute_angles(
     return new_angles
 
 
+def _normalize_angle(angle: float) -> float:
+    """Normalize angle to [-pi, pi] range."""
+    while angle > math.pi:
+        angle -= 2 * math.pi
+    while angle < -math.pi:
+        angle += 2 * math.pi
+    return angle
+
+
+def _angular_diff(a: float, b: float) -> float:
+    """Compute signed angular difference (a - b) in [-pi, pi]."""
+    return _normalize_angle(a - b)
+
+
+def align_rings_to_parents(
+    angles: dict[str, float],
+    header_to_depth: dict[str, int],
+    edges: dict[str, set[str]],
+) -> dict[str, float]:
+    """Rotate each ring to align children with their parents.
+
+    For each depth level >= 2, find the optimal rotation that minimizes
+    angular distance between nodes and their parents. This makes edges
+    more radial (straight from center).
+
+    Args:
+        angles: Current angles for each header.
+        header_to_depth: Mapping from header to its depth.
+        edges: Adjacency list (parent -> children).
+
+    Returns:
+        New angles with rings rotated to align with parents.
+    """
+    # Build child -> parents mapping
+    child_to_parents: dict[str, list[str]] = {}
+    for parent, children in edges.items():
+        for child in children:
+            if child not in child_to_parents:
+                child_to_parents[child] = []
+            child_to_parents[child].append(parent)
+
+    # Group nodes by depth
+    nodes_by_depth: dict[int, list[str]] = {}
+    for header, depth in header_to_depth.items():
+        if header not in angles:
+            continue
+        if depth not in nodes_by_depth:
+            nodes_by_depth[depth] = []
+        nodes_by_depth[depth].append(header)
+
+    aligned = dict(angles)  # Start with current angles
+
+    # Process each depth from 2 onwards
+    for depth in sorted(nodes_by_depth.keys()):
+        if depth <= 1:
+            continue
+
+        nodes = nodes_by_depth[depth]
+        if not nodes:
+            continue
+
+        # Compute optimal rotation for this ring
+        # For each node, find its parent's angle and compute the difference
+        angle_diffs: list[float] = []
+        for node in nodes:
+            parents = child_to_parents.get(node, [])
+            # Find parents at depth-1
+            parent_angles = [
+                aligned[p]
+                for p in parents
+                if p in aligned and header_to_depth.get(p) == depth - 1
+            ]
+            if parent_angles:
+                # Use mean parent angle as target
+                # For circular mean, use vector addition
+                target_x = sum(math.cos(a) for a in parent_angles) / len(parent_angles)
+                target_y = sum(math.sin(a) for a in parent_angles) / len(parent_angles)
+                target_angle = math.atan2(target_y, target_x)
+                diff = _angular_diff(target_angle, aligned[node])
+                angle_diffs.append(diff)
+
+        if not angle_diffs:
+            continue
+
+        # Compute mean rotation using circular mean
+        mean_x = sum(math.cos(d) for d in angle_diffs) / len(angle_diffs)
+        mean_y = sum(math.sin(d) for d in angle_diffs) / len(angle_diffs)
+        rotation = math.atan2(mean_y, mean_x)
+
+        # Apply rotation to all nodes at this depth
+        for node in nodes:
+            aligned[node] = _normalize_angle(aligned[node] + rotation)
+
+    return aligned
+
+
 def compute_positions(
     angles: dict[str, float],
     header_to_depth: dict[str, int],
+    edges: dict[str, set[str]] | None = None,
     min_node_spacing: float = 80,
     min_ring_gap: float = 100,
 ) -> dict[str, tuple[float, float]]:
@@ -163,6 +260,7 @@ def compute_positions(
     Args:
         angles: Angle for each header in radians.
         header_to_depth: Mapping from header to its depth.
+        edges: Optional adjacency list for aligning rings to parents.
         min_node_spacing: Minimum pixels between adjacent nodes on a ring.
         min_ring_gap: Minimum gap between consecutive rings.
 
@@ -171,6 +269,10 @@ def compute_positions(
     """
     # Redistribute angles to even spacing while preserving order
     redistributed = redistribute_angles(angles, header_to_depth)
+
+    # Align rings to parent positions if edges provided
+    if edges:
+        redistributed = align_rings_to_parents(redistributed, header_to_depth, edges)
 
     # Group nodes by depth to count nodes per ring
     nodes_by_depth: dict[int, list[str]] = {}

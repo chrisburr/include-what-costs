@@ -67,8 +67,8 @@ def generate_html(
     layout_graph = build_layout_graph(edges, header_to_depth, classified)
     angles = extract_angles(layout_graph)
 
-    # Compute positions with strict concentric radii
-    positions = compute_positions(angles, header_to_depth)
+    # Compute positions with adaptive radii and ring alignment
+    positions = compute_positions(angles, header_to_depth, edges)
 
     # Apply filter if specified
     filter_result = None

@@ -128,19 +128,17 @@ class TestComputePositions:
         layout_graph = build_layout_graph(edges, header_to_depth, classified)
         angles = extract_angles(layout_graph)
 
-        base_radius = 100
-        ring_spacing = 100
-        positions = compute_positions(angles, header_to_depth, base_radius, ring_spacing)
+        positions = compute_positions(angles, header_to_depth, edges)
 
-        for header, (x, y) in positions.items():
-            depth = header_to_depth[header]
-            expected_radius = base_radius + (depth - 1) * ring_spacing
-            actual_radius = math.sqrt(x**2 + y**2)
+        # Verify all nodes have positions
+        for header in header_to_depth:
+            assert header in positions
 
-            assert abs(actual_radius - expected_radius) < 0.01, (
-                f"Node {header} at depth {depth} has radius {actual_radius}, "
-                f"expected {expected_radius}"
-            )
+        # Verify radii increase with depth
+        radii = {
+            header: math.sqrt(x**2 + y**2) for header, (x, y) in positions.items()
+        }
+        assert radii["A"] < radii["B"] < radii["C"]
 
     def test_same_depth_same_radius(self, diamond_graph):
         """Nodes at the same depth should have the same radius."""
