@@ -537,35 +537,63 @@ def _inject_highlight_script(
 
             network.on('selectNode', function(params) {{
                 var selectedNode = params.nodes[0];
-                var connectedEdges = network.getConnectedEdges(selectedNode);
-                var incoming = [];
-                var outgoing = [];
 
-                // Store original colors and categorize edges
+                // Find all downstream nodes (transitive)
+                var downstreamNodes = new Set();
+                var queue = [selectedNode];
+                while (queue.length > 0) {{
+                    var current = queue.shift();
+                    var currentEdges = network.getConnectedEdges(current);
+                    currentEdges.forEach(function(edgeId) {{
+                        var edge = edges.get(edgeId);
+                        if (edge.from === current && !downstreamNodes.has(edge.to)) {{
+                            downstreamNodes.add(edge.to);
+                            queue.push(edge.to);
+                        }}
+                    }});
+                }}
+
+                // Get direct connections for info panel
+                var connectedEdges = network.getConnectedEdges(selectedNode);
+                var directIncoming = [];
+                var directOutgoing = [];
                 connectedEdges.forEach(function(edgeId) {{
                     var edge = edges.get(edgeId);
-                    if (!originalColors[edgeId]) {{
-                        originalColors[edgeId] = edge.color;
+                    if (edge.to === selectedNode) {{
+                        directIncoming.push(edge.from);
+                    }} else {{
+                        directOutgoing.push(edge.to);
+                    }}
+                }});
+
+                // Highlight all edges in the downstream subgraph
+                var allEdges = edges.get();
+                allEdges.forEach(function(edge) {{
+                    if (!originalColors[edge.id]) {{
+                        originalColors[edge.id] = edge.color;
                     }}
 
                     if (edge.to === selectedNode) {{
-                        incoming.push({{edge: edgeId, from: edge.from}});
-                        edges.update({{id: edgeId, color: {{color: '#3498db', highlight: '#3498db'}}, width: 1.5}});
-                    }} else {{
-                        outgoing.push({{edge: edgeId, to: edge.to}});
-                        edges.update({{id: edgeId, color: {{color: '#2ecc71', highlight: '#2ecc71'}}, width: 1.5}});
+                        // Direct incoming edge
+                        edges.update({{id: edge.id, color: {{color: '#3498db', highlight: '#3498db'}}, width: 1.5}});
+                    }} else if (edge.from === selectedNode || (downstreamNodes.has(edge.from) && downstreamNodes.has(edge.to))) {{
+                        // Downstream edge (from selected or between downstream nodes)
+                        edges.update({{id: edge.id, color: {{color: '#2ecc71', highlight: '#2ecc71'}}, width: 1.5}});
+                    }} else if (downstreamNodes.has(edge.to) && (edge.from === selectedNode || downstreamNodes.has(edge.from))) {{
+                        // Edge into downstream subgraph
+                        edges.update({{id: edge.id, color: {{color: '#2ecc71', highlight: '#2ecc71'}}, width: 1.5}});
                     }}
                 }});
 
                 // Update info panel
                 infoPanel.innerHTML = '<strong>' + selectedNode + '</strong><br><br>' +
-                    '<span style="color:#2ecc71">&#9654; Includes ' + outgoing.length + ' headers:</span><br>' +
-                    outgoing.slice(0, 10).map(function(e) {{ return '&nbsp;&nbsp;' + e.to; }}).join('<br>') +
-                    (outgoing.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (outgoing.length - 10) + ' more' : '') +
+                    '<span style="color:#2ecc71">&#9654; Includes ' + directOutgoing.length + ' direct, ' + downstreamNodes.size + ' transitive:</span><br>' +
+                    directOutgoing.slice(0, 10).map(function(n) {{ return '&nbsp;&nbsp;' + n; }}).join('<br>') +
+                    (directOutgoing.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (directOutgoing.length - 10) + ' more direct' : '') +
                     '<br><br>' +
-                    '<span style="color:#3498db">&#9664; Included by ' + incoming.length + ' headers:</span><br>' +
-                    incoming.slice(0, 10).map(function(e) {{ return '&nbsp;&nbsp;' + e.from; }}).join('<br>') +
-                    (incoming.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (incoming.length - 10) + ' more' : '');
+                    '<span style="color:#3498db">&#9664; Included by ' + directIncoming.length + ' headers:</span><br>' +
+                    directIncoming.slice(0, 10).map(function(n) {{ return '&nbsp;&nbsp;' + n; }}).join('<br>') +
+                    (directIncoming.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (directIncoming.length - 10) + ' more' : '');
                 infoPanel.style.display = 'block';
             }});
 
