@@ -124,7 +124,7 @@ def render_graph(
 
     # Create network with physics disabled (we set fixed positions)
     net = Network(
-        height="900px",
+        height="100vh",
         width="100%",
         bgcolor="#ffffff",
         directed=True,
@@ -525,9 +525,10 @@ def _inject_highlight_script(
                 '</div>';
             document.body.appendChild(legend);
 
-            // Add CSS for legend
+            // Add CSS for legend and full-screen canvas
             var style = document.createElement('style');
-            style.textContent = '.legend-color {{ display:inline-block;width:12px;height:12px;margin-right:5px;vertical-align:middle;border:1px solid #888;border-radius:2px; }}' +
+            style.textContent = 'html, body {{ margin: 0; padding: 0; overflow: hidden; }}' +
+                '.legend-color {{ display:inline-block;width:12px;height:12px;margin-right:5px;vertical-align:middle;border:1px solid #888;border-radius:2px; }}' +
                 '.legend-line {{ display:inline-block;width:20px;height:3px;margin-right:5px;vertical-align:middle; }}';
             document.head.appendChild(style);
 
