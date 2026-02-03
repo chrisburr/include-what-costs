@@ -9,30 +9,6 @@ from pathlib import Path
 from .graph import IncludeGraph
 
 
-def _optimize_placement(
-    headers_by_depth: dict[int, list[str]],
-    child_to_parents: dict[str, set[str]],
-    edges: dict[str, set[str]],
-    max_depth: int | None = None,
-) -> dict[str, float]:
-    """Optimize node placement using spanning tree + sweep refinement.
-
-    Args:
-        headers_by_depth: Mapping from depth to list of headers.
-        child_to_parents: Mapping from child to parent headers.
-        edges: Graph edges.
-        max_depth: Only optimize rings up to this depth (None = all).
-
-    Returns:
-        Mapping from header to angle in radians.
-    """
-    from .optimizer import optimize_placement
-
-    return optimize_placement(
-        headers_by_depth, child_to_parents, edges, max_depth=max_depth
-    )
-
-
 def generate_html(
     graph: IncludeGraph,
     output_file: Path,
@@ -122,10 +98,9 @@ def generate_html(
                     child_to_parents[h].add("__root__")
                     break
 
-    # Optimize all rings with spanning tree + sweep algorithm
-    header_angles = _optimize_placement(
-        headers_by_depth, child_to_parents, graph.edges, max_depth=None
-    )
+    # Sort headers alphabetically for consistent ordering
+    for depth in headers_by_depth:
+        headers_by_depth[depth].sort()
 
     # Create network with physics disabled (we set fixed positions)
     net = Network(
