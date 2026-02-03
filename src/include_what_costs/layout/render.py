@@ -165,7 +165,7 @@ def render_graph(
         tooltip_lines = [root_name, "(root)"]
         if root_has_bench:
             tooltip_lines.append(f"RSS: {root_rss_kb / 1024:.1f} MB")
-            tooltip_lines.append(f"Time: {root_time_s:.1f}s")
+            tooltip_lines.append(f"CPU: {root_time_s:.1f}s")
 
         net.add_node(
             root_name,
@@ -234,7 +234,7 @@ def render_graph(
         tooltip_lines = [header, f"Included {count}x"]
         if has_bench:
             tooltip_lines.append(f"RSS: {rss_kb / 1024:.1f} MB")
-            tooltip_lines.append(f"Time: {time_s:.1f}s")
+            tooltip_lines.append(f"CPU: {time_s:.1f}s")
         tooltip = "\n".join(tooltip_lines)
 
         net.add_node(
@@ -362,7 +362,7 @@ def _inject_highlight_script(
     Also adds a toggle UI to switch between coloring modes:
     - Include count (default)
     - RSS memory (if benchmark data available)
-    - Compile time (if benchmark data available)
+    - CPU time (if benchmark data available)
 
     Args:
         output_file: Path to the HTML file to modify.
@@ -519,7 +519,7 @@ def _inject_highlight_script(
                 panelHtml += '<div style="font-weight:bold;margin-bottom:8px;">Color by:</div>' +
                     '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="count"> Include count</label>' +
                     '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="rss" checked> RSS memory</label>' +
-                    '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="time"> Compile time</label>' +
+                    '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="time"> CPU time</label>' +
                     '<div style="border-top:1px solid #eee;margin-top:8px;padding-top:8px;"></div>';
             }}
             panelHtml += '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="checkbox" id="focusModeCheckbox"> Focus on selection</label>' +
