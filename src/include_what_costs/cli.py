@@ -120,6 +120,17 @@ def main() -> None:
     graph.root = str(args.root)  # Store root header path
     print(f"Found {len(graph.all_headers)} unique headers")
 
+    if len(graph.all_headers) == 0:
+        import shlex
+        print("ERROR: No headers found. Check that the root header exists and compiles.")
+        print("Try running the gcc command manually to debug:")
+        gcc_cmd = f"g++ -H -E {flags} {shlex.quote(str(args.root))}"
+        if args.wrapper:
+            print(f"  {args.wrapper} bash -c {shlex.quote(gcc_cmd)}")
+        else:
+            print(f"  {gcc_cmd}")
+        return
+
     # Supplement edges by parsing headers directly (gcc -H misses some)
     added = supplement_edges_from_parsing(graph)
     if added:
@@ -144,94 +155,102 @@ def main() -> None:
 
             print(f"\nSelecting top {args.benchmark_limit} headers from {len(candidates)} candidates...")
 
-            # Compute (depth, preprocessed_size) for each candidate in parallel
-            header_metrics: list[tuple[str, int, int]] = []
-            num_workers = min(os.cpu_count() or 4, len(candidates))
-            print(f"Measuring preprocessed sizes with {num_workers} workers...")
+            if not candidates:
+                print("No candidates to benchmark after filtering.")
+                headers_to_benchmark = []
+            else:
+                # Compute (depth, preprocessed_size) for each candidate in parallel
+                header_metrics: list[tuple[str, int, int]] = []
+                num_workers = max(1, min(os.cpu_count() or 4, len(candidates)))
+                print(f"Measuring preprocessed sizes with {num_workers} workers...")
 
-            with ProcessPoolExecutor(max_workers=num_workers) as executor:
-                # Submit all tasks
-                future_to_header = {
-                    executor.submit(get_preprocessed_size, header, flags, args.wrapper): header
-                    for header in candidates
-                }
+                with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                    # Submit all tasks
+                    future_to_header = {
+                        executor.submit(get_preprocessed_size, header, flags, args.wrapper): header
+                        for header in candidates
+                    }
 
-                # Collect results as they complete
-                for i, future in enumerate(as_completed(future_to_header)):
-                    header = future_to_header[future]
-                    depth = graph.header_depths.get(header, 999)
-                    try:
-                        size = future.result()
-                    except Exception:
-                        size = 0
-                    header_metrics.append((header, depth, size))
-                    print(f"[{i + 1}/{len(candidates)}] depth={depth}, size={size:,}: {header}")
+                    # Collect results as they complete
+                    for i, future in enumerate(as_completed(future_to_header)):
+                        header = future_to_header[future]
+                        depth = graph.header_depths.get(header, 999)
+                        try:
+                            size = future.result()
+                        except Exception:
+                            size = 0
+                        header_metrics.append((header, depth, size))
+                        print(f"[{i + 1}/{len(candidates)}] depth={depth}, size={size:,}: {header}")
 
-            # Sort by (depth ascending, size descending)
-            header_metrics.sort(key=lambda x: (x[1], -x[2]))
+                # Sort by (depth ascending, size descending)
+                header_metrics.sort(key=lambda x: (x[1], -x[2]))
 
-            # Take top N
-            headers_to_benchmark = [h for h, _, _ in header_metrics[: args.benchmark_limit]]
-            print(f"\nSelected {len(headers_to_benchmark)} headers for benchmarking:")
-            for h, d, s in header_metrics[: args.benchmark_limit]:
-                print(f"  depth={d}, size={s:,}: {h}")
+                # Take top N
+                headers_to_benchmark = [h for h, _, _ in header_metrics[: args.benchmark_limit]]
+                print(f"\nSelected {len(headers_to_benchmark)} headers for benchmarking:")
+                for h, d, s in header_metrics[: args.benchmark_limit]:
+                    print(f"  depth={d}, size={s:,}: {h}")
         else:
             # Default behavior: benchmark direct includes only
             headers_to_benchmark = list(parse_includes(args.root))
 
-        # Calculate max parallel workers: min(cpu_count, total_memory_gb / 3)
-        cpu_count = os.cpu_count() or 4
-        try:
-            mem_bytes = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
-            mem_gb = mem_bytes / (1024**3)
-            mem_workers = int(mem_gb / 3)
-        except (ValueError, OSError):
-            mem_workers = cpu_count  # Fallback if sysconf unavailable
-        num_workers = max(1, min(cpu_count, mem_workers, len(headers_to_benchmark)))
+        if not headers_to_benchmark:
+            print("\nNo headers to benchmark.")
+            results = []
+        else:
+            # Calculate max parallel workers: min(cpu_count, total_memory_gb / 3)
+            cpu_count = os.cpu_count() or 4
+            try:
+                mem_bytes = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+                mem_gb = mem_bytes / (1024**3)
+                mem_workers = int(mem_gb / 3)
+            except (ValueError, OSError):
+                mem_workers = cpu_count  # Fallback if sysconf unavailable
+            num_workers = max(1, min(cpu_count, mem_workers, len(headers_to_benchmark)))
 
-        print(f"\nBenchmarking {len(headers_to_benchmark)} headers with {num_workers} workers...")
+            print(f"\nBenchmarking {len(headers_to_benchmark)} headers with {num_workers} workers...")
 
-        work_dir = Path(tempfile.mkdtemp(prefix="iwc_"))
-        results = []
+            work_dir = Path(tempfile.mkdtemp(prefix="iwc_"))
+            results = []
 
-        with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            future_to_header = {
-                executor.submit(benchmark_header, header, flags, work_dir, "prmon", args.wrapper): header
-                for header in headers_to_benchmark
-            }
+            with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                future_to_header = {
+                    executor.submit(benchmark_header, header, flags, work_dir, "prmon", args.wrapper): header
+                    for header in headers_to_benchmark
+                }
 
-            for i, future in enumerate(as_completed(future_to_header)):
-                header = future_to_header[future]
-                try:
-                    r = future.result()
-                except Exception as e:
-                    print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... ERROR: {e}")
-                    continue
-                results.append(r.__dict__)
+                for i, future in enumerate(as_completed(future_to_header)):
+                    header = future_to_header[future]
+                    try:
+                        r = future.result()
+                    except Exception as e:
+                        print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... ERROR: {e}")
+                        continue
+                    results.append(r.__dict__)
 
-                if r.success:
-                    print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... RSS={r.max_rss_kb / 1024:.0f}MB, time={r.wall_time_s:.1f}s")
-                else:
-                    print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... FAILED: {r.error}")
-                    print(f"    Command: {r.command}")
+                    if r.success:
+                        print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... RSS={r.max_rss_kb / 1024:.0f}MB, time={r.wall_time_s:.1f}s")
+                    else:
+                        print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... FAILED: {r.error}")
+                        print(f"    Command: {r.command}")
 
-        # Write benchmark outputs
-        with open(args.output / "header_costs.json", "w") as f:
-            json.dump(results, f, indent=2)
+            # Write benchmark outputs
+            with open(args.output / "header_costs.json", "w") as f:
+                json.dump(results, f, indent=2)
 
-        generate_csv(results, args.output / "header_costs.csv")
-        print(f"\nWrote header_costs.json and header_costs.csv")
+            generate_csv(results, args.output / "header_costs.csv")
+            print(f"\nWrote header_costs.json and header_costs.csv")
 
-        # Print summary
-        ok = [r for r in results if r["success"]]
-        if ok:
-            print("\n=== TOP 10 BY RSS ===")
-            for r in sorted(ok, key=lambda x: -x["max_rss_kb"])[:10]:
-                print(f"  {r['max_rss_kb'] / 1024:6.0f} MB  {r['header']}")
+            # Print summary
+            ok = [r for r in results if r["success"]]
+            if ok:
+                print("\n=== TOP 10 BY RSS ===")
+                for r in sorted(ok, key=lambda x: -x["max_rss_kb"])[:10]:
+                    print(f"  {r['max_rss_kb'] / 1024:6.0f} MB  {r['header']}")
 
-            print("\n=== TOP 10 BY TIME ===")
-            for r in sorted(ok, key=lambda x: -x["wall_time_s"])[:10]:
-                print(f"  {r['wall_time_s']:6.1f} s   {r['header']}")
+                print("\n=== TOP 10 BY TIME ===")
+                for r in sorted(ok, key=lambda x: -x["wall_time_s"])[:10]:
+                    print(f"  {r['wall_time_s']:6.1f} s   {r['header']}")
 
     # Generate HTML with benchmark data (if available)
     generate_html(
