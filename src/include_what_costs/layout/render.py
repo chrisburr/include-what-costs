@@ -1,13 +1,69 @@
 """Pyvis rendering with edge-type styling."""
 
+import base64
+import math
 from pathlib import Path
 
 from .classify import EdgeType
 from .filter import FilterResult
 
 
+def _create_rotated_label_svg(
+    label: str,
+    angle: float,
+    color: str,
+    font_size: int = 10,
+) -> str:
+    """Create SVG with text rotated to align with radial direction.
+
+    Text is rotated so it reads outward from center, flipping on the left
+    side so text is never upside-down.
+
+    Args:
+        label: Text to display.
+        angle: Angle in radians from center.
+        color: Background color for the label box.
+        font_size: Font size in pixels.
+
+    Returns:
+        Data URL for the SVG image.
+    """
+    # Convert to degrees for SVG transform
+    angle_deg = math.degrees(angle)
+
+    # Flip text on left side so it's never upside-down
+    if angle_deg > 90 or angle_deg < -90:
+        angle_deg += 180
+
+    # Estimate text dimensions (approximate)
+    char_width = font_size * 0.6
+    text_width = len(label) * char_width
+    text_height = font_size * 1.4
+    padding = 4
+
+    # SVG dimensions need to accommodate rotated text
+    # Use the diagonal as the dimension to ensure text fits at any angle
+    svg_size = max(text_width, text_height) + padding * 2 + 10
+    center = svg_size / 2
+
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{svg_size}" height="{svg_size}">
+  <g transform="translate({center}, {center}) rotate({angle_deg})">
+    <rect x="{-text_width/2 - padding}" y="{-text_height/2}"
+          width="{text_width + padding*2}" height="{text_height}"
+          fill="{color}" stroke="#888" stroke-width="1" rx="3"/>
+    <text x="0" y="{font_size * 0.35}"
+          text-anchor="middle" font-family="monospace" font-size="{font_size}"
+          fill="#333">{label}</text>
+  </g>
+</svg>'''
+
+    # Encode as data URL
+    encoded = base64.b64encode(svg.encode()).decode()
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
 def render_graph(
-    positions: dict[str, tuple[float, float]],
+    positions: dict[str, tuple[float, float, float]],
     edges: dict[str, set[str]],
     classified_edges: dict[EdgeType, list[tuple[str, str]]],
     filter_result: FilterResult | None,
@@ -18,7 +74,7 @@ def render_graph(
     """Render graph with pyvis.
 
     Args:
-        positions: (x, y) positions for each header.
+        positions: (x, y, angle) positions for each header.
         edges: Full adjacency list (parent -> children).
         classified_edges: Edges classified by type.
         filter_result: Optional filter result for styling filtered nodes.
@@ -61,7 +117,7 @@ def render_graph(
         )
 
     # Add nodes
-    for header, (x, y) in positions.items():
+    for header, (x, y, angle) in positions.items():
         if header not in visible_nodes:
             continue
 
@@ -89,18 +145,19 @@ def render_graph(
             color = "#e9ecef"  # light gray
             font_size = 10
 
-        # Get depth from position (for label)
-        # This is approximate - we could pass header_to_depth but positions encode it
+        # Create SVG with rotated label
+        label_text = name if is_intermediate else f"{name} ({count}x)"
+        svg_url = _create_rotated_label_svg(label_text, angle, color, font_size)
+
         net.add_node(
             name,
-            label=f"{name}\n({count}x)" if not is_intermediate else name,
+            label="",  # No text label, using image
             title=f"{header}\nIncluded {count}x",
             x=x,
             y=y,
             fixed=True,
-            color=color,
-            shape="box",
-            font={"size": font_size},
+            shape="image",
+            image=svg_url,
             size=15 if is_intermediate else 25,
         )
 
@@ -133,7 +190,7 @@ def render_graph(
 
     # Add edges from root to depth-1 nodes
     if root_name:
-        for header, (x, y) in positions.items():
+        for header, (x, y, angle) in positions.items():
             if header not in visible_nodes:
                 continue
             # Check if this is a depth-1 node (connected to root in tree edges)

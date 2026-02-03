@@ -248,10 +248,10 @@ def compute_positions(
     angles: dict[str, float],
     header_to_depth: dict[str, int],
     edges: dict[str, set[str]] | None = None,
-    min_node_spacing: float = 80,
+    min_node_spacing: float = 50,
     min_ring_gap: float = 50,
-) -> dict[str, tuple[float, float]]:
-    """Compute final (x, y) positions with adaptive ring radii.
+) -> dict[str, tuple[float, float, float]]:
+    """Compute final (x, y, angle) positions with adaptive ring radii.
 
     Ring radii are computed to ensure adequate spacing between nodes:
     - Each ring is large enough that arc length between nodes >= min_node_spacing
@@ -265,7 +265,7 @@ def compute_positions(
         min_ring_gap: Minimum gap between consecutive rings.
 
     Returns:
-        Dictionary mapping header to (x, y) position.
+        Dictionary mapping header to (x, y, angle) position.
     """
     # Redistribute angles to even spacing while preserving order
     redistributed = redistribute_angles(angles, header_to_depth)
@@ -294,13 +294,13 @@ def compute_positions(
         ring_radii[depth] = max(current_radius + min_ring_gap, min_radius_for_spacing)
         current_radius = ring_radii[depth]
 
-    positions: dict[str, tuple[float, float]] = {}
+    positions: dict[str, tuple[float, float, float]] = {}
 
     for header, angle in redistributed.items():
         depth = header_to_depth.get(header, 1)
         radius = ring_radii.get(depth, min_ring_gap)
         x = radius * math.cos(angle)
         y = radius * math.sin(angle)
-        positions[header] = (x, y)
+        positions[header] = (x, y, angle)
 
     return positions

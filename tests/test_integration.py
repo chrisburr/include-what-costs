@@ -52,7 +52,7 @@ class TestFullPipeline:
 
         # Verify: all nodes at same depth have same radius
         radii_by_depth: dict[int, list[float]] = {}
-        for header, (x, y) in positions.items():
+        for header, (x, y, _angle) in positions.items():
             depth = header_to_depth[header]
             radius = math.sqrt(x**2 + y**2)
             if depth not in radii_by_depth:
@@ -181,7 +181,7 @@ class TestFullPipeline:
 
         # Group radii by depth
         radii_by_depth: dict[int, list[float]] = {}
-        for header, (x, y) in positions.items():
+        for header, (x, y, _angle) in positions.items():
             depth = header_to_depth[header]
             radius = math.sqrt(x**2 + y**2)
             if depth not in radii_by_depth:

@@ -136,7 +136,7 @@ class TestComputePositions:
 
         # Verify radii increase with depth
         radii = {
-            header: math.sqrt(x**2 + y**2) for header, (x, y) in positions.items()
+            header: math.sqrt(x**2 + y**2) for header, (x, y, _angle) in positions.items()
         }
         assert radii["A"] < radii["B"] < radii["C"]
 
@@ -150,8 +150,8 @@ class TestComputePositions:
         positions = compute_positions(angles, header_to_depth)
 
         # B and C are at same depth
-        bx, by = positions["B"]
-        cx, cy = positions["C"]
+        bx, by, _b_angle = positions["B"]
+        cx, cy, _c_angle = positions["C"]
 
         b_radius = math.sqrt(bx**2 + by**2)
         c_radius = math.sqrt(cx**2 + cy**2)
@@ -173,15 +173,15 @@ class TestComputePositions:
 
         # With 1 node per depth, radii are determined by min_ring_gap
         # Depth 1: 50, Depth 2: 100, Depth 3: 150
-        ax, ay = positions["A"]
+        ax, ay, _a_angle = positions["A"]
         a_radius = math.sqrt(ax**2 + ay**2)
         assert abs(a_radius - 50) < 0.01
 
-        bx, by = positions["B"]
+        bx, by, _b_angle = positions["B"]
         b_radius = math.sqrt(bx**2 + by**2)
         assert abs(b_radius - 100) < 0.01
 
-        cx, cy = positions["C"]
+        cx, cy, _c_angle = positions["C"]
         c_radius = math.sqrt(cx**2 + cy**2)
         assert abs(c_radius - 150) < 0.01
 
