@@ -248,20 +248,18 @@ def compute_positions(
     angles: dict[str, float],
     header_to_depth: dict[str, int],
     edges: dict[str, set[str]] | None = None,
-    min_node_spacing: float = 20,
-    min_ring_gap: float = 30,
+    min_ring_gap: float = 40,
 ) -> dict[str, tuple[float, float, float]]:
     """Compute final (x, y, angle) positions with adaptive ring radii.
 
-    Ring radii are computed to ensure adequate spacing between nodes:
-    - Each ring is large enough that arc length between nodes >= min_node_spacing
-    - Each ring is at least min_ring_gap further out than the previous ring
+    Ring radii are computed to ensure labels don't overlap:
+    - Arc length between adjacent nodes >= label height (labels are rotated radially)
+    - Each ring is at least min_ring_gap further out than previous
 
     Args:
         angles: Angle for each header in radians.
         header_to_depth: Mapping from header to its depth.
         edges: Optional adjacency list for aligning rings to parents.
-        min_node_spacing: Minimum pixels between adjacent nodes on a ring.
         min_ring_gap: Minimum gap between consecutive rings.
 
     Returns:
@@ -283,16 +281,32 @@ def compute_positions(
             nodes_by_depth[depth] = []
         nodes_by_depth[depth].append(header)
 
+    # Label sizing constants (matching _create_rotated_label_svg in render.py)
+    font_size = 10
+    padding = 4
+    label_height = font_size * 1.4 + padding * 2  # ~22 pixels
+
     # Compute adaptive radii for each depth
-    # Arc length = 2π × radius / n_nodes >= min_node_spacing
-    # Therefore: radius >= n_nodes × min_node_spacing / (2π)
+    # Labels are rotated radially (pointing outward like spokes), so:
+    # - For same-ring overlap: use label HEIGHT (perpendicular to radius)
+    # - For cross-ring overlap: use min_ring_gap
+    # Arc length = 2π × radius / n_nodes >= label_height
+    # Therefore: radius >= n_nodes × label_height / (2π)
     ring_radii: dict[int, float] = {}
-    current_radius = 0.0
+    prev_radius = 0.0
+
     for depth in sorted(nodes_by_depth.keys()):
         n_nodes = len(nodes_by_depth[depth])
-        min_radius_for_spacing = n_nodes * min_node_spacing / (2 * math.pi)
-        ring_radii[depth] = max(current_radius + min_ring_gap, min_radius_for_spacing)
-        current_radius = ring_radii[depth]
+
+        # Minimum radius so labels don't overlap on this ring
+        # Using label_height since labels are rotated radially
+        min_for_labels = n_nodes * label_height / (2 * math.pi)
+
+        # Minimum radius to stay outside previous ring with adequate gap
+        min_for_gap = prev_radius + min_ring_gap
+
+        ring_radii[depth] = max(min_for_labels, min_for_gap)
+        prev_radius = ring_radii[depth]
 
     positions: dict[str, tuple[float, float, float]] = {}
 

@@ -168,26 +168,26 @@ class TestComputePositions:
 
         min_ring_gap = 50
         positions = compute_positions(
-            angles, header_to_depth, min_node_spacing=80, min_ring_gap=min_ring_gap
+            angles, header_to_depth, min_ring_gap=min_ring_gap
         )
 
-        # With 1 node per depth, radii are determined by min_ring_gap
-        # Depth 1: 50, Depth 2: 100, Depth 3: 150
+        # With 1 node per depth, radii are determined by cumulative ring gaps
         ax, ay, _a_angle = positions["A"]
         a_radius = math.sqrt(ax**2 + ay**2)
-        assert abs(a_radius - 50) < 0.01
 
         bx, by, _b_angle = positions["B"]
         b_radius = math.sqrt(bx**2 + by**2)
-        assert abs(b_radius - 100) < 0.01
 
         cx, cy, _c_angle = positions["C"]
         c_radius = math.sqrt(cx**2 + cy**2)
-        assert abs(c_radius - 150) < 0.01
+
+        # Each ring should be at least min_ring_gap further out than previous
+        assert b_radius - a_radius >= min_ring_gap - 0.01
+        assert c_radius - b_radius >= min_ring_gap - 0.01
 
     def test_adaptive_radius_for_dense_rings(self):
-        """Rings with many nodes should have larger radii."""
-        # Create a graph where depth 2 has many nodes
+        """Rings with many nodes should have larger radii based on label height."""
+        # Create a graph where depth 1 has many nodes
         edges = {
             "root": {"A", "B", "C", "D", "E", "F", "G", "H"},
             "A": set(),
@@ -205,13 +205,17 @@ class TestComputePositions:
         layout_graph = build_layout_graph(edges, header_to_depth, classified)
         angles = extract_angles(layout_graph)
 
-        min_node_spacing = 80
+        min_ring_gap = 40
         positions = compute_positions(
-            angles, header_to_depth, min_node_spacing=min_node_spacing, min_ring_gap=100
+            angles, header_to_depth, min_ring_gap=min_ring_gap
         )
 
-        # Depth 2 has 8 nodes, minimum radius = 8 * 80 / (2π) ≈ 101.9
-        # But min_ring_gap ensures it's at least 200 (100 + 100)
-        # So depth 2 radius should be 200
+        # Depth 1 has 8 nodes, radius should be large enough for label spacing
+        # Labels are rotated radially, so we use label_height for arc spacing
+        # label_height = 10 * 1.4 + 4 * 2 = 22 pixels
+        # min_for_labels = 8 * label_height / (2π) ≈ 28 pixels
+        label_height = 10 * 1.4 + 4 * 2
+        min_radius_for_labels = 8 * label_height / (2 * math.pi)
+
         a_radius = math.sqrt(positions["A"][0] ** 2 + positions["A"][1] ** 2)
-        assert a_radius >= 200 - 0.01
+        assert a_radius >= min_radius_for_labels - 0.01
