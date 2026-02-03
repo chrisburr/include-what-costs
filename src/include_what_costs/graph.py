@@ -3,6 +3,7 @@
 import json
 import re
 import subprocess
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,30 @@ class IncludeGraph:
     header_depths: dict[str, int] = field(default_factory=dict)  # Min depth for each header
     root: str | None = None  # The root header file being analyzed
     direct_includes: set[str] = field(default_factory=set)  # Depth-1 includes from root
+
+
+def _extract_flags_from_command(cmd: dict) -> list[str]:
+    """Extract -I, -D, -isystem, -std flags from a compile command.
+
+    Args:
+        cmd: A compile command entry with a "command" key.
+
+    Returns:
+        List of extracted compiler flags.
+    """
+    parts = cmd["command"].split()
+    flags = []
+    i = 0
+    while i < len(parts):
+        if parts[i] == "-isystem" and i + 1 < len(parts):
+            flags.extend([parts[i], parts[i + 1]])
+            i += 2
+        elif parts[i].startswith(("-I", "-D", "-isystem", "-std")):
+            flags.append(parts[i])
+            i += 1
+        else:
+            i += 1
+    return flags
 
 
 def extract_compile_flags(
@@ -48,29 +73,36 @@ def extract_compile_flags(
             source_pattern = parts[i - 1]  # e.g., "FunctorCore"
             break
 
+    # First pass: try to match source pattern
+    if source_pattern:
+        for cmd in commands:
+            if source_pattern not in cmd["file"]:
+                continue
+            if not cmd["file"].endswith(".cpp"):
+                continue
+            flags = _extract_flags_from_command(cmd)
+            if flags:
+                return " ".join(flags)
+
+    # Fallback: use first available .cpp file's flags
+    if source_pattern:
+        print(
+            f"Warning: No compile command found matching pattern '{source_pattern}', "
+            "using fallback",
+            file=sys.stderr,
+        )
+
     for cmd in commands:
-        if source_pattern and source_pattern not in cmd["file"]:
-            continue
         if not cmd["file"].endswith(".cpp"):
             continue
-
-        parts = cmd["command"].split()
-        flags = []
-        i = 0
-        while i < len(parts):
-            if parts[i] == "-isystem" and i + 1 < len(parts):
-                flags.extend([parts[i], parts[i + 1]])
-                i += 2
-            elif parts[i].startswith(("-I", "-D", "-isystem", "-std")):
-                flags.append(parts[i])
-                i += 1
-            else:
-                i += 1
-
+        flags = _extract_flags_from_command(cmd)
         if flags:
             return " ".join(flags)
 
-    raise RuntimeError("No suitable compile command found")
+    raise RuntimeError(
+        "No suitable compile command found"
+        + (f" (searched for pattern: {source_pattern})" if source_pattern else "")
+    )
 
 
 def run_gcc_h(
