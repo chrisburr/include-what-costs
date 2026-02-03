@@ -175,21 +175,41 @@ def main() -> None:
             # Default behavior: benchmark direct includes only
             headers_to_benchmark = list(parse_includes(args.root))
 
-        print(f"\nBenchmarking {len(headers_to_benchmark)} headers...")
+        # Calculate max parallel workers: min(cpu_count, total_memory_gb / 3)
+        cpu_count = os.cpu_count() or 4
+        try:
+            mem_bytes = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+            mem_gb = mem_bytes / (1024**3)
+            mem_workers = int(mem_gb / 3)
+        except (ValueError, OSError):
+            mem_workers = cpu_count  # Fallback if sysconf unavailable
+        num_workers = max(1, min(cpu_count, mem_workers, len(headers_to_benchmark)))
+
+        print(f"\nBenchmarking {len(headers_to_benchmark)} headers with {num_workers} workers...")
 
         work_dir = Path(tempfile.mkdtemp(prefix="iwc_"))
         results = []
 
-        for i, header in enumerate(headers_to_benchmark):
-            print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}...", end=" ", flush=True)
-            r = benchmark_header(header, flags, work_dir, "prmon", args.wrapper)
-            results.append(r.__dict__)
+        with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            future_to_header = {
+                executor.submit(benchmark_header, header, flags, work_dir, "prmon", args.wrapper): header
+                for header in headers_to_benchmark
+            }
 
-            if r.success:
-                print(f"RSS={r.max_rss_kb / 1024:.0f}MB, time={r.wall_time_s:.1f}s")
-            else:
-                print(f"FAILED: {r.error}")
-                print(f"    Command: {r.command}")
+            for i, future in enumerate(as_completed(future_to_header)):
+                header = future_to_header[future]
+                try:
+                    r = future.result()
+                except Exception as e:
+                    print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... ERROR: {e}")
+                    continue
+                results.append(r.__dict__)
+
+                if r.success:
+                    print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... RSS={r.max_rss_kb / 1024:.0f}MB, time={r.wall_time_s:.1f}s")
+                else:
+                    print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... FAILED: {r.error}")
+                    print(f"    Command: {r.command}")
 
         # Write benchmark outputs
         with open(args.output / "header_costs.json", "w") as f:
