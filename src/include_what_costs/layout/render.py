@@ -346,7 +346,7 @@ def _inject_highlight_script(
     var rssThresholds = {rss_thresholds_json};
     var timeThresholds = {time_thresholds_json};
     var hasBenchmarkData = {'true' if has_benchmark_data else 'false'};
-    var currentMode = 'count';
+    var currentMode = hasBenchmarkData ? 'rss' : 'count';
 
     // Create rotated label SVG (mirrors Python implementation)
     function createRotatedLabelSvg(label, angle, color, fontSize) {{
@@ -471,8 +471,8 @@ def _inject_highlight_script(
                 togglePanel.id = 'togglePanel';
                 togglePanel.innerHTML = '<div style="position:fixed;top:10px;left:10px;padding:10px;background:white;border:1px solid #ccc;border-radius:5px;font-family:sans-serif;font-size:12px;z-index:1000;box-shadow:0 2px 10px rgba(0,0,0,0.1);">' +
                     '<div style="font-weight:bold;margin-bottom:8px;">Color by:</div>' +
-                    '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="count" checked> Include count</label>' +
-                    '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="rss"> RSS memory</label>' +
+                    '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="count"> Include count</label>' +
+                    '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="rss" checked> RSS memory</label>' +
                     '<label style="display:block;cursor:pointer;margin:4px 0;"><input type="radio" name="colorMode" value="time"> Compile time</label>' +
                     '</div>';
                 document.body.appendChild(togglePanel);
@@ -484,6 +484,9 @@ def _inject_highlight_script(
                         updateNodeColors(this.value);
                     }});
                 }});
+
+                // Apply RSS coloring by default
+                updateNodeColors('rss');
             }}
 
             // Create info panel (left side, below toggle if present)
@@ -498,10 +501,18 @@ def _inject_highlight_script(
             legend.innerHTML = '<div style="position:fixed;top:10px;right:10px;padding:10px;background:white;border:1px solid #ccc;border-radius:5px;font-family:sans-serif;font-size:11px;z-index:1000;box-shadow:0 2px 10px rgba(0,0,0,0.1);">' +
                 '<div style="font-weight:bold;margin-bottom:5px;">Node colors:</div>' +
                 '<div id="colorLegendContent">' +
-                '<div><span class="legend-color" style="background:#ff6b6b;"></span> &gt;10 includes</div>' +
-                '<div><span class="legend-color" style="background:#ffa94d;"></span> &gt;5 includes</div>' +
-                '<div><span class="legend-color" style="background:#ffd43b;"></span> &gt;2 includes</div>' +
-                '<div><span class="legend-color" style="background:#e9ecef;"></span> &le;2 includes</div>' +
+                (hasBenchmarkData ?
+                    '<div><span class="legend-color" style="background:#ff6b6b;"></span> &ge;90th percentile</div>' +
+                    '<div><span class="legend-color" style="background:#ffa94d;"></span> &ge;75th percentile</div>' +
+                    '<div><span class="legend-color" style="background:#ffd43b;"></span> &ge;50th percentile</div>' +
+                    '<div><span class="legend-color" style="background:#e9ecef;"></span> &lt;50th percentile</div>' +
+                    '<div><span class="legend-color" style="background:#d0d0d0;"></span> No data</div>'
+                :
+                    '<div><span class="legend-color" style="background:#ff6b6b;"></span> &gt;10 includes</div>' +
+                    '<div><span class="legend-color" style="background:#ffa94d;"></span> &gt;5 includes</div>' +
+                    '<div><span class="legend-color" style="background:#ffd43b;"></span> &gt;2 includes</div>' +
+                    '<div><span class="legend-color" style="background:#e9ecef;"></span> &le;2 includes</div>'
+                ) +
                 '</div>' +
                 '<div style="margin-top:8px;border-top:1px solid #eee;padding-top:8px;font-weight:bold;margin-bottom:5px;">Edge colors:</div>' +
                 '<div><span class="legend-line" style="background:#2ecc71;"></span> includes (outgoing)</div>' +
