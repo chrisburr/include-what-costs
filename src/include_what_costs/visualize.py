@@ -251,7 +251,7 @@ def generate_csv(results: list, output_file: Path) -> None:
     if not results:
         return
 
-    fieldnames = ["header", "max_rss_kb", "wall_time_s", "success", "error"]
+    fieldnames = ["header", "max_rss_kb", "wall_time_s", "success", "error", "command"]
 
     with open(output_file, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)

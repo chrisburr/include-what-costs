@@ -17,6 +17,7 @@ class BenchmarkResult:
     wall_time_s: float
     success: bool
     error: str | None = None
+    command: str | None = None
 
 
 def benchmark_header(
@@ -80,6 +81,7 @@ def benchmark_header(
                 wall_time_s=metrics["Max"]["wtime"],
                 success=result.returncode == 0,
                 error=None if result.returncode == 0 else result.stderr[:200],
+                command=full_cmd,
             )
 
         return BenchmarkResult(
@@ -88,6 +90,7 @@ def benchmark_header(
             wall_time_s=0,
             success=False,
             error="No prmon output",
+            command=full_cmd,
         )
 
     except subprocess.TimeoutExpired:
@@ -97,6 +100,7 @@ def benchmark_header(
             wall_time_s=300,
             success=False,
             error="Timeout",
+            command=full_cmd,
         )
     except Exception as e:
         return BenchmarkResult(
@@ -105,6 +109,7 @@ def benchmark_header(
             wall_time_s=0,
             success=False,
             error=str(e),
+            command=full_cmd,
         )
 
 

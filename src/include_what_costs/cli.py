@@ -191,7 +191,8 @@ def main() -> None:
             if r.success:
                 print(f"RSS={r.max_rss_kb / 1024:.0f}MB, time={r.wall_time_s:.1f}s")
             else:
-                print("FAILED")
+                print(f"FAILED: {r.error}")
+                print(f"    Command: {r.command}")
 
         # Write benchmark outputs
         with open(args.output / "header_costs.json", "w") as f:
