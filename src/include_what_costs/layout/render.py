@@ -537,43 +537,81 @@ def _inject_highlight_script(
 
             network.on('selectNode', function(params) {{
                 var selectedNode = params.nodes[0];
-                var connectedEdges = network.getConnectedEdges(selectedNode);
-                var incoming = [];
-                var outgoing = [];
 
-                // Store original colors and categorize edges
+                // Find all downstream nodes (BFS)
+                var downstreamNodes = new Set();
+                var queue = [selectedNode];
+                while (queue.length > 0) {{
+                    var current = queue.shift();
+                    var currentEdges = network.getConnectedEdges(current);
+                    currentEdges.forEach(function(edgeId) {{
+                        var edge = edges.get(edgeId);
+                        if (edge.from === current && !downstreamNodes.has(edge.to)) {{
+                            downstreamNodes.add(edge.to);
+                            queue.push(edge.to);
+                        }}
+                    }});
+                }}
+
+                // Get direct connections for info panel
+                var directIncoming = [];
+                var directOutgoing = [];
+                var connectedEdges = network.getConnectedEdges(selectedNode);
                 connectedEdges.forEach(function(edgeId) {{
                     var edge = edges.get(edgeId);
-                    if (!originalColors[edgeId]) {{
-                        originalColors[edgeId] = edge.color;
-                    }}
-
                     if (edge.to === selectedNode) {{
-                        incoming.push({{edge: edgeId, from: edge.from}});
-                        edges.update({{id: edgeId, color: {{color: '#3498db', highlight: '#3498db'}}, width: 1.5}});
+                        directIncoming.push(edge.from);
                     }} else {{
-                        outgoing.push({{edge: edgeId, to: edge.to}});
-                        edges.update({{id: edgeId, color: {{color: '#2ecc71', highlight: '#2ecc71'}}, width: 1.5}});
+                        directOutgoing.push(edge.to);
                     }}
                 }});
 
+                // Collect all edge updates in a batch
+                var edgeUpdates = [];
+                var allEdges = edges.get();
+                allEdges.forEach(function(edge) {{
+                    if (!originalColors[edge.id]) {{
+                        originalColors[edge.id] = edge.color;
+                    }}
+
+                    var isFromSelected = edge.from === selectedNode;
+                    var isToSelected = edge.to === selectedNode;
+                    var isFromDownstream = downstreamNodes.has(edge.from);
+                    var isToDownstream = downstreamNodes.has(edge.to);
+
+                    if (isToSelected) {{
+                        // Direct incoming edge (blue)
+                        edgeUpdates.push({{id: edge.id, color: {{color: '#3498db', highlight: '#3498db'}}, width: 1.5}});
+                    }} else if (isFromSelected && isToDownstream) {{
+                        // Edge from selected to downstream (green)
+                        edgeUpdates.push({{id: edge.id, color: {{color: '#2ecc71', highlight: '#2ecc71'}}, width: 1.5}});
+                    }} else if (isFromDownstream && isToDownstream) {{
+                        // Edge between downstream nodes (green)
+                        edgeUpdates.push({{id: edge.id, color: {{color: '#2ecc71', highlight: '#2ecc71'}}, width: 1.5}});
+                    }}
+                }});
+
+                // Single batched update
+                edges.update(edgeUpdates);
+
                 // Update info panel
                 infoPanel.innerHTML = '<strong>' + selectedNode + '</strong><br><br>' +
-                    '<span style="color:#2ecc71">&#9654; Includes ' + outgoing.length + ' headers:</span><br>' +
-                    outgoing.slice(0, 10).map(function(e) {{ return '&nbsp;&nbsp;' + e.to; }}).join('<br>') +
-                    (outgoing.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (outgoing.length - 10) + ' more' : '') +
+                    '<span style="color:#2ecc71">&#9654; Includes ' + directOutgoing.length + ' direct, ' + downstreamNodes.size + ' total:</span><br>' +
+                    directOutgoing.slice(0, 10).map(function(n) {{ return '&nbsp;&nbsp;' + n; }}).join('<br>') +
+                    (directOutgoing.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (directOutgoing.length - 10) + ' more direct' : '') +
                     '<br><br>' +
-                    '<span style="color:#3498db">&#9664; Included by ' + incoming.length + ' headers:</span><br>' +
-                    incoming.slice(0, 10).map(function(e) {{ return '&nbsp;&nbsp;' + e.from; }}).join('<br>') +
-                    (incoming.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (incoming.length - 10) + ' more' : '');
+                    '<span style="color:#3498db">&#9664; Included by ' + directIncoming.length + ' headers:</span><br>' +
+                    directIncoming.slice(0, 10).map(function(n) {{ return '&nbsp;&nbsp;' + n; }}).join('<br>') +
+                    (directIncoming.length > 10 ? '<br>&nbsp;&nbsp;... and ' + (directIncoming.length - 10) + ' more' : '');
                 infoPanel.style.display = 'block';
             }});
 
             network.on('deselectNode', function(params) {{
-                // Restore original edge colors
-                Object.keys(originalColors).forEach(function(edgeId) {{
-                    edges.update({{id: edgeId, color: originalColors[edgeId], width: 0.5}});
+                // Restore original edge colors (batched)
+                var restoreUpdates = Object.keys(originalColors).map(function(edgeId) {{
+                    return {{id: edgeId, color: originalColors[edgeId], width: 0.5}};
                 }});
+                edges.update(restoreUpdates);
                 originalColors = {{}};
                 infoPanel.style.display = 'none';
             }});
