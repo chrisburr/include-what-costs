@@ -20,7 +20,7 @@ from .layout import (
 def generate_html(
     graph: IncludeGraph,
     output_file: Path,
-    prefix: str | None = None,
+    prefix: str | list[str] | None = None,
     direct_includes: list[str] | None = None,
     benchmark_results: list[dict] | None = None,
 ) -> None:
@@ -32,7 +32,7 @@ def generate_html(
     Args:
         graph: The include graph to visualize.
         output_file: Path to write the HTML file.
-        prefix: Only include headers under this path prefix.
+        prefix: Only include headers under this path prefix (or list of prefixes).
         direct_includes: List of headers directly included by root (from parsing the file).
         benchmark_results: Optional list of benchmark result dicts with header costs.
     """
@@ -125,7 +125,7 @@ def generate_html(
 def generate_dot(
     graph: IncludeGraph,
     output_file: Path,
-    prefix: str | None = None,
+    prefix: str | list[str] | None = None,
     direct_includes: list[str] | None = None,
 ) -> None:
     """Generate Graphviz DOT file from include graph.
@@ -133,7 +133,7 @@ def generate_dot(
     Args:
         graph: The include graph to visualize.
         output_file: Path to write the DOT file.
-        prefix: Only include headers under this path prefix.
+        prefix: Only include headers under this path prefix (or list of prefixes).
         direct_includes: List of headers directly included by root (from parsing the file).
                         If None, uses graph.direct_includes (which may be incomplete due to
                         gcc -H not showing headers at depth 1 if already included deeper).
@@ -142,13 +142,12 @@ def generate_dot(
 
     # Filter headers by prefix
     if prefix:
-        prefix_resolved = str(Path(prefix).resolve())
-        relevant = {h for h in graph.all_headers if h.startswith(prefix_resolved)}
+        # Normalize to list
+        prefixes = [prefix] if isinstance(prefix, str) else prefix
+        resolved_prefixes = [str(Path(p).resolve()) for p in prefixes]
+        relevant = {h for h in graph.all_headers if any(h.startswith(p) for p in resolved_prefixes)}
         # Debug: show what's being filtered
-        print(f"Prefix filter: {prefix_resolved}")
-        print(f"Sample headers (first 5):")
-        for h in list(graph.all_headers)[:5]:
-            print(f"  {h} -> matches: {h.startswith(prefix_resolved)}")
+        print(f"Prefix filter: {resolved_prefixes}")
         print(f"Headers matching prefix: {len(relevant)}")
     else:
         relevant = graph.all_headers

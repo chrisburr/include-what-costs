@@ -51,7 +51,8 @@ def main() -> None:
     parser.add_argument(
         "--prefix",
         type=str,
-        help="Only show headers under this path prefix in the graph",
+        action="append",
+        help="Only show headers under this path prefix (can be repeated)",
     )
     parser.add_argument(
         "--wrapper",
@@ -82,7 +83,8 @@ def main() -> None:
         if not args.wrapper and "wrapper" in config:
             args.wrapper = config["wrapper"]
         if not args.prefix and "prefix" in config:
-            args.prefix = config["prefix"]
+            val = config["prefix"]
+            args.prefix = val if isinstance(val, list) else [val]
         if args.benchmark is None and "benchmark" in config:
             val = config["benchmark"]
             if val is True or val == "all":
@@ -105,7 +107,7 @@ def main() -> None:
         if not wrapper_path.is_absolute():
             args.wrapper = str(Path.cwd() / wrapper_path)
     if args.prefix:
-        args.prefix = str(Path(args.prefix).resolve())
+        args.prefix = [str(Path(p).resolve()) for p in args.prefix]
 
     args.output.mkdir(parents=True, exist_ok=True)
 
@@ -150,7 +152,7 @@ def main() -> None:
         # Build candidate list
         candidates = list(graph.all_headers)
         if args.prefix:
-            candidates = [h for h in candidates if h.startswith(args.prefix)]
+            candidates = [h for h in candidates if any(h.startswith(p) for p in args.prefix)]
 
         # Always include root header to show total compilation cost
         root_header = str(args.root)

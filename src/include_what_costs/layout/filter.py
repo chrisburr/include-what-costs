@@ -16,14 +16,14 @@ class FilterResult:
 
 def apply_filter(
     edges: dict[str, set[str]],
-    filter_string: str,
+    prefixes: str | list[str],
     all_nodes: set[str] | None = None,
 ) -> FilterResult:
-    """Filter nodes by path prefix, detecting paths through external headers.
+    """Filter nodes by path prefix(es), detecting paths through external headers.
 
     Args:
         edges: Adjacency list (parent -> children).
-        filter_string: Path prefix to filter by.
+        prefixes: Path prefix or list of prefixes to filter by.
         all_nodes: All nodes in the graph. If None, derived from edges.
 
     Returns:
@@ -31,8 +31,10 @@ def apply_filter(
     """
     result = FilterResult()
 
-    # Resolve filter prefix
-    prefix_resolved = str(Path(filter_string).resolve())
+    # Normalize to list and resolve prefixes
+    if isinstance(prefixes, str):
+        prefixes = [prefixes]
+    resolved_prefixes = [str(Path(p).resolve()) for p in prefixes]
 
     # Determine all nodes
     if all_nodes is None:
@@ -40,9 +42,9 @@ def apply_filter(
         for children in edges.values():
             all_nodes.update(children)
 
-    # Find nodes matching the filter
+    # Find nodes matching any of the prefixes
     for node in all_nodes:
-        if node.startswith(prefix_resolved):
+        if any(node.startswith(p) for p in resolved_prefixes):
             result.included_nodes.add(node)
 
     # Build reverse edge map for path detection
