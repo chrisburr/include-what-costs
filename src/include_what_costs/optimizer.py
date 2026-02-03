@@ -121,6 +121,30 @@ def optimize_placement(
                 prev_node = dummy_name
             G.add_edge(prev_node, child)
 
+    # For same-level edges (gap == 0), create shared dummy child to encourage
+    # twopi to place connected same-level nodes near each other
+    max_depth_val = max(headers_by_depth.keys()) if headers_by_depth else 0
+    same_level_pairs: set[tuple[str, str]] = set()
+    for parent, children in edges.items():
+        if parent not in all_nodes:
+            continue
+        parent_depth = node_to_depth[parent]
+        for child in children:
+            if child not in all_nodes:
+                continue
+            if node_to_depth[child] == parent_depth:
+                # Same-level edge - normalize pair to avoid duplicates
+                pair = tuple(sorted([parent, child]))
+                if pair not in same_level_pairs:
+                    same_level_pairs.add(pair)
+                    # Create shared dummy child at depth+1 (if within bounds)
+                    if parent_depth < max_depth_val:
+                        dummy_name = f"__dummy_{dummy_count}"
+                        dummy_count += 1
+                        G.add_node(dummy_name)
+                        G.add_edge(parent, dummy_name)
+                        G.add_edge(child, dummy_name)
+
     # Find nodes still unreachable from __root__
     reachable = nx.descendants(G, "__root__") | {"__root__"}
     unreachable = all_nodes - reachable
