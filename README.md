@@ -78,7 +78,7 @@ include-what-costs --config my_config.yaml
 | `--prefix` | Only show headers under this path prefix in the graph |
 | `--wrapper` | Wrapper command for gcc (e.g., `./Rec/run`) |
 | `--no-benchmark` | Skip header cost benchmarking |
-| `--cxx-standard` | C++ standard (default: c++20) |
+| `--benchmark-limit N` | Benchmark only the N largest headers (by depth, then preprocessed size) |
 | `--config` | Path to YAML config file |
 
 ## Output Files
@@ -86,6 +86,7 @@ include-what-costs --config my_config.yaml
 | File | Description |
 |------|-------------|
 | `include_graph.json` | Full dependency graph and analysis data |
+| `include_graph.html` | Interactive HTML visualization (with pyvis) |
 | `include_graph.dot` | Graphviz DOT file |
 | `include_graph.png` | Rendered graph (radial layout) |
 | `include_graph.svg` | Rendered graph (SVG format) |
