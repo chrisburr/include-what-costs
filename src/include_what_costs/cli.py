@@ -95,7 +95,6 @@ def build_graph(args: argparse.Namespace):
     if args.wrapper:
         print(f"Using wrapper: {args.wrapper}")
     flags = extract_compile_flags(args.compile_commands, root_header=args.root)
-    print(f"Compile flags (first 500 chars): {flags[:500]}...")
     output = run_gcc_h(args.root, flags, args.wrapper)
     print(f"gcc -H output length: {len(output)} chars")
     graph = parse_gcc_h_output(output)
