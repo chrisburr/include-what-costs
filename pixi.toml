@@ -1,6 +1,5 @@
 [workspace]
 name = "include-what-costs"
-version = "0.1.0"
 description = "Analyze C++ header dependencies and compile-time costs"
 channels = ["conda-forge"]
 platforms = ["linux-64"]

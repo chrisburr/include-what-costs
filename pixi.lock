@@ -636,14 +636,14 @@ packages:
   timestamp: 1747934053147
 - pypi: ./
   name: include-what-costs
-  version: 0.1.0
-  sha256: b9de4d9fec33bbd91e5c7efc781858d540f65d6f5105424b675963f9d63d3b27
+  version: 0.1.dev63+g65dcc0e6e.d20260205
+  sha256: d0173922e36ed694d67e5ea116d29f606ff836dcb67a9fbf237a83f0cdbf3f80
   requires_dist:
-  - pyvis
-  - pygraphviz
   - networkx
-  - pyyaml ; extra == 'yaml'
+  - pygraphviz
+  - pyvis
   - pytest ; extra == 'dev'
+  - pyyaml ; extra == 'yaml'
   requires_python: '>=3.10'
 - conda: https://conda.anaconda.org/conda-forge/noarch/iniconfig-2.3.0-pyhd8ed1ab_0.conda
   sha256: e1a9e3b1c8fe62dc3932a616c284b5d8cbe3124bbfbedcf4ce5c828cb166ee19
