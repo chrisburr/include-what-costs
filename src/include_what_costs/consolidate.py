@@ -47,9 +47,7 @@ def find_external_headers_with_includers(
     matching_headers = {h for h in graph.all_headers if pattern in h}
 
     # Find headers matching our prefixes
-    prefix_matching = {
-        h for h in graph.all_headers if any(h.startswith(p) for p in prefixes)
-    }
+    prefix_matching = {h for h in graph.all_headers if any(h.startswith(p) for p in prefixes)}
 
     # Build reverse edges to find parents
     child_to_parents = build_reverse_edges(graph)

@@ -8,9 +8,14 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 from .benchmark import benchmark_header, get_preprocessed_size
-from .graph import extract_compile_flags, parse_gcc_h_output, run_gcc_h, supplement_edges_from_parsing
+from .graph import (
+    extract_compile_flags,
+    parse_gcc_h_output,
+    run_gcc_h,
+    supplement_edges_from_parsing,
+)
 from .parse_header import parse_includes
-from .visualize import generate_csv, generate_dot, generate_html, generate_json, generate_summary
+from .visualize import generate_csv, generate_html, generate_json, generate_summary
 
 
 def load_config(config_path: Path) -> dict:
@@ -27,18 +32,14 @@ def load_config(config_path: Path) -> dict:
 
         with open(config_path) as f:
             return yaml.safe_load(f)
-    except ImportError:
-        raise ImportError("PyYAML required for config files: pip install pyyaml")
+    except ImportError as err:
+        raise ImportError("PyYAML required for config files: pip install pyyaml") from err
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
     """Add common arguments shared between subcommands."""
-    parser.add_argument(
-        "--root", type=Path, help="Root header file to analyze"
-    )
-    parser.add_argument(
-        "--compile-commands", type=Path, help="Path to compile_commands.json"
-    )
+    parser.add_argument("--root", type=Path, help="Root header file to analyze")
+    parser.add_argument("--compile-commands", type=Path, help="Path to compile_commands.json")
     parser.add_argument(
         "--prefix",
         type=str,
@@ -106,6 +107,7 @@ def build_graph(args: argparse.Namespace):
 
     if len(graph.all_headers) == 0:
         import shlex
+
         print("ERROR: No headers found. Check that the root header exists and compiles.")
         print("Try running the gcc command manually to debug:")
         gcc_cmd = f"g++ -H -E {flags} {shlex.quote(str(args.root))}"
@@ -167,14 +169,14 @@ def cmd_analyze(args: argparse.Namespace, parser: argparse.ArgumentParser) -> No
         if args.benchmark == -1 or args.benchmark >= len(candidates):
             # Benchmark all headers, sorted by depth (lower depth = likely more expensive)
             # Root header first, then by ascending depth
-            headers_to_benchmark = sorted(
-                candidates, key=lambda h: graph.header_depths.get(h, 999)
-            )
+            headers_to_benchmark = sorted(candidates, key=lambda h: graph.header_depths.get(h, 999))
             headers_to_benchmark.insert(0, root_header)
             if args.benchmark == -1:
                 print(f"\nBenchmarking all {len(headers_to_benchmark)} headers")
             else:
-                print(f"\nBenchmarking all {len(headers_to_benchmark)} headers (N={args.benchmark} >= {len(candidates)} candidates)")
+                print(
+                    f"\nBenchmarking all {len(headers_to_benchmark)} headers (N={args.benchmark} >= {len(candidates)} candidates)"
+                )
         else:
             # --benchmark=N: select top N by (depth, preprocessed_size)
             print(f"\nSelecting top {args.benchmark} headers from {len(candidates)} candidates...")
@@ -232,14 +234,18 @@ def cmd_analyze(args: argparse.Namespace, parser: argparse.ArgumentParser) -> No
                 mem_workers = cpu_count  # Fallback if sysconf unavailable
             num_workers = max(1, min(cpu_count, mem_workers, len(headers_to_benchmark)))
 
-            print(f"\nBenchmarking {len(headers_to_benchmark)} headers with {num_workers} workers...")
+            print(
+                f"\nBenchmarking {len(headers_to_benchmark)} headers with {num_workers} workers..."
+            )
 
             work_dir = Path(tempfile.mkdtemp(prefix="iwc_"))
             results = []
 
             with ProcessPoolExecutor(max_workers=num_workers) as executor:
                 future_to_header = {
-                    executor.submit(benchmark_header, header, flags, work_dir, "prmon", args.wrapper): header
+                    executor.submit(
+                        benchmark_header, header, flags, work_dir, "prmon", args.wrapper
+                    ): header
                     for header in headers_to_benchmark
                 }
 
@@ -253,9 +259,13 @@ def cmd_analyze(args: argparse.Namespace, parser: argparse.ArgumentParser) -> No
                     results.append(r.__dict__)
 
                     if r.success:
-                        print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... RSS={r.max_rss_kb / 1024:.0f}MB, time={r.wall_time_s:.1f}s")
+                        print(
+                            f"[{i + 1}/{len(headers_to_benchmark)}] {header}... RSS={r.max_rss_kb / 1024:.0f}MB, time={r.wall_time_s:.1f}s"
+                        )
                     else:
-                        print(f"[{i + 1}/{len(headers_to_benchmark)}] {header}... FAILED: {r.error}")
+                        print(
+                            f"[{i + 1}/{len(headers_to_benchmark)}] {header}... FAILED: {r.error}"
+                        )
                         print(f"    Command: {r.command}")
 
             # Write benchmark outputs
@@ -263,7 +273,7 @@ def cmd_analyze(args: argparse.Namespace, parser: argparse.ArgumentParser) -> No
                 json.dump(results, f, indent=2)
 
             generate_csv(results, args.output / "header_costs.csv")
-            print(f"\nWrote header_costs.json and header_costs.csv")
+            print("\nWrote header_costs.json and header_costs.csv")
 
             # Print summary
             ok = [r for r in results if r["success"]]
@@ -288,7 +298,7 @@ def cmd_analyze(args: argparse.Namespace, parser: argparse.ArgumentParser) -> No
 
     # Generate summary
     generate_summary(graph, results, args.output / "summary.txt")
-    print(f"\nWrote summary.txt")
+    print("\nWrote summary.txt")
     print(f"\nAll outputs written to {args.output}/")
 
 
@@ -410,7 +420,7 @@ def print_include_chain(path: list[str], prefix: list[str] | None) -> None:
         if prefix:
             for p in prefix:
                 if header.startswith(p):
-                    display = header[len(p):].lstrip("/")
+                    display = header[len(p) :].lstrip("/")
                     break
         indent = "  " * i
         arrow = "-> " if i > 0 else ""
@@ -437,9 +447,7 @@ def cmd_trace(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None
         return
 
     # Find shortest paths
-    paths, total_count = find_include_paths(
-        graph.edges, from_header, to_header, args.max_paths
-    )
+    paths, total_count = find_include_paths(graph.edges, from_header, to_header, args.max_paths)
 
     if not paths:
         print(f"No path found from {from_header} to {to_header}")

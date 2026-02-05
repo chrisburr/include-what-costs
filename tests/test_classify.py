@@ -1,7 +1,5 @@
 """Tests for classify.py module."""
 
-import pytest
-
 from include_what_costs.layout.classify import EdgeType, classify_edges
 from include_what_costs.layout.depth import compute_depths
 

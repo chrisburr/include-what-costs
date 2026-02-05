@@ -126,7 +126,8 @@ def run_gcc_h(
         # Redirect stderr to a temp file to avoid mixing with stdout
         import shlex
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.stderr', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".stderr", delete=False) as f:
             stderr_file = f.name
         gcc_cmd_with_redirect = f"{gcc_cmd} 2>{stderr_file}"
         cmd = f"{wrapper} bash -c {shlex.quote(gcc_cmd_with_redirect)}"
@@ -255,16 +256,12 @@ def compute_direct_includer_counts(
         Dictionary mapping each header to the count of prefix-matching
         headers that directly include it.
     """
-    prefix_matching = {
-        h for h in graph.all_headers if any(h.startswith(p) for p in prefixes)
-    }
+    prefix_matching = {h for h in graph.all_headers if any(h.startswith(p) for p in prefixes)}
     child_to_parents = build_reverse_edges(graph)
 
     counts: dict[str, int] = {}
     for header in graph.all_headers:
-        includers = [
-            p for p in child_to_parents.get(header, set()) if p in prefix_matching
-        ]
+        includers = [p for p in child_to_parents.get(header, set()) if p in prefix_matching]
         counts[header] = len(includers)
     return counts
 

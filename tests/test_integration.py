@@ -1,13 +1,11 @@
 """Integration tests for the full layout pipeline."""
 
-import json
 import math
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from include_what_costs.layout import (
+    EdgeType,
     apply_filter,
     build_layout_graph,
     classify_edges,
@@ -15,7 +13,6 @@ from include_what_costs.layout import (
     compute_positions,
     extract_angles,
     render_graph,
-    EdgeType,
 )
 
 
@@ -161,9 +158,7 @@ class TestFullPipeline:
         for node, depth in header_to_depth.items():
             if depth > 1:
                 parents = child_to_parents.get(node, set())
-                parent_depths = {
-                    header_to_depth.get(p) for p in parents if p in header_to_depth
-                }
+                parent_depths = {header_to_depth.get(p) for p in parents if p in header_to_depth}
                 assert depth - 1 in parent_depths, (
                     f"Node {node} at depth {depth} has no parent at depth {depth - 1}"
                 )

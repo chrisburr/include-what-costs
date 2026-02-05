@@ -12,6 +12,11 @@ prmon = ">=3.2.0,<4"
 pygraphviz = ">=1.14"
 networkx = ">=3.0"
 pytest = ">=7.0"
+python-build = ">=1.0"
+
+[tasks]
+test = "pytest"
+build = "python -m build"
 
 [pypi-dependencies]
 include-what-costs = { path = ".", editable = true }

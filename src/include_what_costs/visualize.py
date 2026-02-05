@@ -62,8 +62,8 @@ def generate_html(
     # Use new layout module for depth computation
     headers_by_depth, header_to_depth = compute_depths(edges, depth1_headers)
 
-    # Classify edges by type
-    classified = classify_edges(edges, header_to_depth)
+    # Classify edges by type (needed for styling)
+    classify_edges(edges, header_to_depth)
 
     # Apply filter first if specified (so layout is computed for visible nodes only)
     filter_result = None
@@ -146,7 +146,6 @@ def generate_dot(
                         If None, uses graph.direct_includes (which may be incomplete due to
                         gcc -H not showing headers at depth 1 if already included deeper).
     """
-    from collections import defaultdict
 
     # Filter headers by prefix
     if prefix:
@@ -167,7 +166,9 @@ def generate_dot(
         headers_by_depth[depth].append(header)
 
     max_depth = max(headers_by_depth.keys()) if headers_by_depth else 1
-    print(f"Include depths: 1 to {max_depth} (headers per ring: {', '.join(f'd{d}={len(headers_by_depth[d])}' for d in sorted(headers_by_depth.keys())[:5])}...)")
+    print(
+        f"Include depths: 1 to {max_depth} (headers per ring: {', '.join(f'd{d}={len(headers_by_depth[d])}' for d in sorted(headers_by_depth.keys())[:5])}...)"
+    )
 
     with open(output_file, "w") as f:
         f.write("digraph includes {\n")
@@ -290,8 +291,16 @@ def generate_csv(results: list, output_file: Path) -> None:
         return
 
     fieldnames = [
-        "header", "max_rss_kb", "wall_time_s", "success", "error", "command",
-        "prmon_rss_kb", "prmon_wtime_s", "time_rss_kb", "time_cpu_s",
+        "header",
+        "max_rss_kb",
+        "wall_time_s",
+        "success",
+        "error",
+        "command",
+        "prmon_rss_kb",
+        "prmon_wtime_s",
+        "time_rss_kb",
+        "time_cpu_s",
     ]
 
     with open(output_file, "w", newline="") as f:
@@ -304,9 +313,7 @@ def generate_csv(results: list, output_file: Path) -> None:
                 writer.writerow(r.__dict__)
 
 
-def generate_summary(
-    graph: IncludeGraph, results: list | None, output_file: Path
-) -> None:
+def generate_summary(graph: IncludeGraph, results: list | None, output_file: Path) -> None:
     """Generate human-readable summary file.
 
     Args:
@@ -324,9 +331,7 @@ def generate_summary(
 
         f.write("Top 20 Most-Included Headers:\n")
         f.write("-" * 40 + "\n")
-        for header, count in sorted(
-            graph.include_counts.items(), key=lambda x: -x[1]
-        )[:20]:
+        for header, count in sorted(graph.include_counts.items(), key=lambda x: -x[1])[:20]:
             f.write(f"  {count:4d}x  {Path(header).name}\n")
 
         if results:

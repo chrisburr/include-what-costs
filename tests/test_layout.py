@@ -2,9 +2,7 @@
 
 import math
 
-import pytest
-
-from include_what_costs.layout.classify import EdgeType, classify_edges
+from include_what_costs.layout.classify import classify_edges
 from include_what_costs.layout.depth import compute_depths
 from include_what_costs.layout.twopi import (
     ROOT_NODE,
@@ -135,9 +133,7 @@ class TestComputePositions:
             assert header in positions
 
         # Verify radii increase with depth
-        radii = {
-            header: math.sqrt(x**2 + y**2) for header, (x, y, _angle) in positions.items()
-        }
+        radii = {header: math.sqrt(x**2 + y**2) for header, (x, y, _angle) in positions.items()}
         assert radii["A"] < radii["B"] < radii["C"]
 
     def test_same_depth_same_radius(self, diamond_graph):
@@ -167,9 +163,7 @@ class TestComputePositions:
         angles = extract_angles(layout_graph)
 
         min_ring_gap = 50
-        positions = compute_positions(
-            angles, header_to_depth, min_ring_gap=min_ring_gap
-        )
+        positions = compute_positions(angles, header_to_depth, min_ring_gap=min_ring_gap)
 
         # With 1 node per depth, radii are determined by cumulative ring gaps
         ax, ay, _a_angle = positions["A"]
@@ -206,9 +200,7 @@ class TestComputePositions:
         angles = extract_angles(layout_graph)
 
         min_ring_gap = 40
-        positions = compute_positions(
-            angles, header_to_depth, min_ring_gap=min_ring_gap
-        )
+        positions = compute_positions(angles, header_to_depth, min_ring_gap=min_ring_gap)
 
         # Depth 1 has 8 nodes, radius should be large enough for label spacing
         # Labels are rotated radially, so we use label_height for arc spacing

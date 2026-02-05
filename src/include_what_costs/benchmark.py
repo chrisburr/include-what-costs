@@ -207,9 +207,7 @@ def get_preprocessed_size(
     Returns:
         Size of preprocessed output in bytes, or 0 on error.
     """
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".cpp", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".cpp", delete=False) as f:
         f.write(f'#include "{header}"\n')
         test_cpp = f.name
 
@@ -220,9 +218,7 @@ def get_preprocessed_size(
         else:
             cmd = gcc_cmd
 
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=60
-        )
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
         return len(result.stdout) if result.returncode == 0 else 0
     except (subprocess.TimeoutExpired, Exception):
         return 0

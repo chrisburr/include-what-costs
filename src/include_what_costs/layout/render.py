@@ -48,8 +48,8 @@ def _create_rotated_label_svg(
 
     svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{svg_size}" height="{svg_size}">
   <g transform="translate({center}, {center}) rotate({angle_deg})">
-    <rect x="{-text_width/2 - padding}" y="{-text_height/2}"
-          width="{text_width + padding*2}" height="{text_height}"
+    <rect x="{-text_width / 2 - padding}" y="{-text_height / 2}"
+          width="{text_width + padding * 2}" height="{text_height}"
           fill="{color}" stroke="#888" stroke-width="1" rx="3"/>
     <text x="0" y="{font_size * 0.35}"
           text-anchor="middle" font-family="monospace" font-size="{font_size}"
@@ -106,7 +106,6 @@ def render_graph(
         root_path: Optional full path of the root file (for benchmark lookup).
         benchmark_data: Optional dict mapping header paths to {rss_kb, time_s}.
     """
-    import json as json_module
 
     from pyvis.network import Network
 
@@ -139,6 +138,7 @@ def render_graph(
 
     # Detect basename collisions and create unique display names
     from collections import Counter
+
     basenames = [Path(h).name for h in visible_nodes]
     basename_counts = Counter(basenames)
     colliding_basenames = {name for name, count in basename_counts.items() if count > 1}
@@ -290,13 +290,13 @@ def render_graph(
 
     # Add edges from root to depth-1 nodes
     if root_name:
-        for header, (x, y, angle) in positions.items():
+        for header, (_x, _y, _angle) in positions.items():
             if header not in visible_nodes:
                 continue
             # Check if this is a depth-1 node (connected to root in tree edges)
             # We need to check if it's not a child in any tree edge
             is_depth_1 = True
-            for parent, child in classified_edges[EdgeType.TREE]:
+            for _parent, child in classified_edges[EdgeType.TREE]:
                 if child == header:
                     is_depth_1 = False
                     break
@@ -374,7 +374,7 @@ def _inject_highlight_script(
     """
     import json as json_module
 
-    with open(output_file, "r") as f:
+    with open(output_file) as f:
         html = f.read()
 
     # Serialize data for JavaScript
@@ -389,7 +389,7 @@ def _inject_highlight_script(
     var nodeData = {node_data_json};
     var rssThresholds = {rss_thresholds_json};
     var timeThresholds = {time_thresholds_json};
-    var hasBenchmarkData = {'true' if has_benchmark_data else 'false'};
+    var hasBenchmarkData = {"true" if has_benchmark_data else "false"};
     var currentMode = hasBenchmarkData ? 'rss' : 'count';
     var focusMode = false;
     var hiddenNodes = new Set();

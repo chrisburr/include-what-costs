@@ -1,7 +1,5 @@
 """Tests for graph utilities."""
 
-import pytest
-
 from include_what_costs.graph import (
     IncludeGraph,
     build_reverse_edges,

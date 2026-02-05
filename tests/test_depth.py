@@ -1,7 +1,5 @@
 """Tests for depth.py module."""
 
-import pytest
-
 from include_what_costs.layout.depth import compute_depths
 
 

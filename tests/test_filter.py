@@ -1,7 +1,5 @@
 """Tests for filter.py module."""
 
-import pytest
-
 from include_what_costs.layout.filter import FilterResult, apply_filter
 
 

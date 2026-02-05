@@ -1,9 +1,6 @@
 """Tests for consolidate module."""
 
-import pytest
-
 from include_what_costs.consolidate import (
-    ExternalHeaderInfo,
     find_external_headers_with_includers,
     generate_synthetic_header,
 )
@@ -54,13 +51,11 @@ class TestFindExternalHeadersWithIncluders:
         graph.edges["/my/c.h"] = {"/ext/high.h"}
         graph.all_headers = {"/my/a.h", "/my/b.h", "/my/c.h", "/ext/low.h", "/ext/high.h"}
 
-        results = find_external_headers_with_includers(
-            graph, pattern="ext", prefixes=["/my"]
-        )
+        results = find_external_headers_with_includers(graph, pattern="ext", prefixes=["/my"])
 
         assert len(results) == 2
         assert results[0].header == "/ext/high.h"  # 2 includers
-        assert results[1].header == "/ext/low.h"   # 1 includer
+        assert results[1].header == "/ext/low.h"  # 1 includer
 
     def test_no_matches(self):
         """Test empty result when no headers match pattern."""
@@ -68,9 +63,7 @@ class TestFindExternalHeadersWithIncluders:
         graph.edges["/my/a.h"] = {"/other/lib.h"}
         graph.all_headers = {"/my/a.h", "/other/lib.h"}
 
-        results = find_external_headers_with_includers(
-            graph, pattern="DD4hep", prefixes=["/my"]
-        )
+        results = find_external_headers_with_includers(graph, pattern="DD4hep", prefixes=["/my"])
 
         assert len(results) == 0
 

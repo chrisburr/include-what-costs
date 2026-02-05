@@ -131,7 +131,7 @@ def redistribute_angles(
 
     new_angles: dict[str, float] = {}
 
-    for depth, nodes in nodes_by_depth.items():
+    for _depth, nodes in nodes_by_depth.items():
         if len(nodes) == 1:
             # Single node keeps its angle
             new_angles[nodes[0]] = angles[nodes[0]]
@@ -216,9 +216,7 @@ def align_rings_to_parents(
             parents = child_to_parents.get(node, [])
             # Find parents at depth-1
             parent_angles = [
-                aligned[p]
-                for p in parents
-                if p in aligned and header_to_depth.get(p) == depth - 1
+                aligned[p] for p in parents if p in aligned and header_to_depth.get(p) == depth - 1
             ]
             if parent_angles:
                 # Use mean parent angle as target
