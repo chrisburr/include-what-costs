@@ -2,11 +2,6 @@
 
 A tool to analyze C++ header dependencies and compile-time costs.
 
-Given a "root" header file, it:
-1. Builds the complete include dependency graph using `gcc -H`
-2. Benchmarks compile cost (RSS and time) of each direct include using `prmon`
-3. Generates a radial graph visualization showing the dependency structure
-
 ## Installation
 
 Using pixi (recommended):
@@ -25,92 +20,162 @@ pip install -e .
 - `prmon` - for memory/time benchmarking (must be in PATH)
 - `graphviz` - for graph rendering (specifically `twopi` for radial layout)
 
-## Usage
+## Commands
 
-### Basic usage:
+### `analyze` - Analyze header dependencies and benchmark costs
+
+Builds the complete include dependency graph and optionally benchmarks compile costs.
+
 ```bash
-include-what-costs \
+include-what-costs analyze \
     --root path/to/header.h \
     --compile-commands build/compile_commands.json \
     --output results/
 ```
 
-### Filter to specific paths:
+With benchmarking (measures RSS and compile time for each header):
 ```bash
-include-what-costs \
+include-what-costs analyze \
+    --root path/to/header.h \
+    --compile-commands build/compile_commands.json \
+    --benchmark \
+    --output results/
+```
+
+Benchmark only the top N headers (by depth, then preprocessed size):
+```bash
+include-what-costs analyze \
+    --root path/to/header.h \
+    --compile-commands build/compile_commands.json \
+    --benchmark 50 \
+    --output results/
+```
+
+### `consolidate` - Find headers exposing external dependencies
+
+Identifies which of your headers expose a specific external dependency (e.g., DD4hep) and estimates the cost of removing that exposure.
+
+```bash
+include-what-costs consolidate \
     --root path/to/header.h \
     --compile-commands build/compile_commands.json \
     --prefix /home/user/project \
-    --output results/
+    --pattern DD4hep
 ```
 
-### Graph only (skip benchmarking):
+Output shows:
+- Which of your headers include the external dependency
+- How many of your other headers would be affected by removing each include
+- Estimated memory savings from removing the dependency
+
+### `trace` - Find include path between headers
+
+Finds and displays the shortest include path(s) between two headers. Useful for understanding why a particular header is being included.
+
 ```bash
-include-what-costs \
+include-what-costs trace \
     --root path/to/header.h \
     --compile-commands build/compile_commands.json \
-    --no-benchmark \
-    --output results/
+    --to "DD4hep/Objects.h"
 ```
 
-### Using a wrapper command:
-For projects that require a specific environment (e.g., LHCb):
+By default traces from the root header. Use `--from` to trace from a different starting point:
 ```bash
-include-what-costs \
+include-what-costs trace \
     --root path/to/header.h \
     --compile-commands build/compile_commands.json \
-    --wrapper ./run_env.sh \
-    --output results/
+    --from "MyHeader.h" \
+    --to "DD4hep/Objects.h"
 ```
 
-### Using a config file:
+Shows up to 10 shortest paths by default. Use `-n` to control:
 ```bash
-include-what-costs --config my_config.yaml
+# Show only 1 path
+include-what-costs trace ... --to "SomeHeader.h" -n 1
+
+# Show up to 20 paths
+include-what-costs trace ... --to "SomeHeader.h" -n 20
 ```
 
-## Options
+Example output:
+```
+8 shortest path(s) of length 8, 5 more not shown:
+
+Path 1:
+JIT_includes.h
+  -> TrackLike.h
+    -> KalmanFitResult.h
+      -> Measurement.h
+        -> DeMuonChamber.h
+          -> DeMuonChamber.h
+            -> DeIOV.h
+              -> DD4hep/Handle.h
+
+Path 2:
+...
+```
+
+## Common Options
+
+These options are shared across all subcommands:
 
 | Option | Description |
 |--------|-------------|
 | `--root` | Root header file to analyze (required) |
 | `--compile-commands` | Path to compile_commands.json (required) |
-| `--output` | Output directory (default: results) |
-| `--prefix` | Only show headers under this path prefix in the graph |
+| `--prefix` | Path prefix for filtering/display (can be repeated) |
 | `--wrapper` | Wrapper command for gcc (e.g., `./Rec/run`) |
-| `--no-benchmark` | Skip header cost benchmarking |
-| `--benchmark-limit N` | Benchmark only the N largest headers (by depth, then preprocessed size) |
 | `--config` | Path to YAML config file |
 
-## Output Files
+### Subcommand-specific options
+
+**`analyze`:**
+| Option | Description |
+|--------|-------------|
+| `--output` | Output directory (default: results) |
+| `--benchmark [N]` | Benchmark headers. Without N: all headers. With N: top N by (depth, preprocessed size) |
+
+**`consolidate`:**
+| Option | Description |
+|--------|-------------|
+| `--pattern` | Substring pattern to match external headers (required) |
+| `--output` | Optional JSON output path |
+
+**`trace`:**
+| Option | Description |
+|--------|-------------|
+| `--from` | Source header substring (defaults to --root) |
+| `--to` | Target header substring (required) |
+| `-n, --max-paths` | Maximum paths to show (default: 10) |
+
+## Output Files (analyze)
 
 | File | Description |
 |------|-------------|
 | `include_graph.json` | Full dependency graph and analysis data |
-| `include_graph.html` | Interactive HTML visualization (with pyvis) |
-| `include_graph.dot` | Graphviz DOT file |
-| `include_graph.png` | Rendered graph (radial layout) |
-| `include_graph.svg` | Rendered graph (SVG format) |
-| `header_costs.json` | Per-header RSS and compile time |
+| `include_graph.html` | Interactive HTML visualization |
+| `header_costs.json` | Per-header RSS and compile time (if benchmarked) |
 | `header_costs.csv` | Same in CSV format |
 | `summary.txt` | Human-readable summary |
 
-## Graph Visualization
+## Using a Config File
 
-The graph uses a radial layout (`twopi`) with:
-- **Root node** (blue, center): The analyzed header file
-- **Direct includes**: Connected directly to root
-- **Node colors**: Based on include count (red > orange > yellow > white)
+YAML config files can specify common options:
 
-To manually render with different options:
+```yaml
+root: path/to/header.h
+compile-commands: build/compile_commands.json
+wrapper: ./run_env.sh
+prefix:
+  - /home/user/project
+  - /home/user/other
+output: results/
+benchmark: 50  # or true for all
+```
+
 ```bash
-# Radial layout (default)
-twopi -Tpng results/include_graph.dot -o graph.png
-
-# Hierarchical layout
-dot -Tpng results/include_graph.dot -o graph.png
-
-# Force-directed layout
-fdp -Tpng results/include_graph.dot -o graph.png
+include-what-costs analyze --config my_config.yaml
+include-what-costs trace --config my_config.yaml --to "SomeHeader.h"
 ```
 
 ## LHCb Usage
@@ -120,40 +185,30 @@ For analyzing JIT functor compilation includes:
 ```bash
 cd ~/stack
 
-# Clean caches first (optional, for accurate benchmarking)
-find . -name 'lib*FunctorCache_*' -print -delete
-find . -name 'JIT_includes.h.gch' -print -delete
-make fast/Rec
-
-# Run analysis
-./Rec/run include-what-costs \
+# Run analysis with benchmarking
+pixi run -m include-what-costs/ include-what-costs analyze \
     --root Rec/Phys/FunctorCore/include/Functors/JIT_includes.h \
     --compile-commands Rec/build.x86_64_v3-el9-gcc13-opt/compile_commands.json \
     --wrapper ./Rec/run \
     --prefix ~/stack \
+    --benchmark \
     --output results/
-```
 
-Or using pixi:
-```bash
-pixi run -m include-what-costs include-what-costs \
+# Find what's pulling in DD4hep
+pixi run -m include-what-costs/ include-what-costs consolidate \
     --root Rec/Phys/FunctorCore/include/Functors/JIT_includes.h \
     --compile-commands Rec/build.x86_64_v3-el9-gcc13-opt/compile_commands.json \
     --wrapper ./Rec/run \
     --prefix ~/stack \
-    --output results/
-```
+    --pattern DD4hep
 
-## Config File Format
-
-YAML config files can specify any CLI option:
-
-```yaml
-root: path/to/header.h
-compile-commands: build/compile_commands.json
-wrapper: ./run_env.sh
-prefix: /home/user/project
-output: results/
+# Trace path to a specific DD4hep header
+pixi run -m include-what-costs/ include-what-costs trace \
+    --root Rec/Phys/FunctorCore/include/Functors/JIT_includes.h \
+    --compile-commands Rec/build.x86_64_v3-el9-gcc13-opt/compile_commands.json \
+    --wrapper ./Rec/run \
+    --prefix ~/stack \
+    --to DD4hep/Handle.h
 ```
 
 ## How It Works
@@ -162,8 +217,8 @@ output: results/
 
 2. **Run `gcc -H`** to get the complete include hierarchy (stderr contains the include tree with depth indicated by dots)
 
-3. **Parse direct includes** from the root header file itself (more accurate than relying on gcc -H depth tracking)
+3. **Supplement edges** by parsing `#include` directives directly from headers (gcc -H only shows first inclusion of each header)
 
-4. **Benchmark each direct include** by compiling a minimal `.cpp` that includes just that header, measuring RSS and time with `prmon`
+4. **Benchmark headers** (if requested) by compiling minimal `.cpp` files that include just that header, measuring RSS and time with `prmon`
 
-5. **Generate outputs**: JSON data, DOT graph, rendered images, and summary
+5. **Generate outputs**: JSON data, HTML visualization, and summary

@@ -5,7 +5,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from .graph import IncludeGraph
+from .graph import IncludeGraph, compute_direct_includer_counts
 from .layout import (
     apply_filter,
     build_layout_graph,
@@ -107,6 +107,14 @@ def generate_html(
                     "time_s": r["wall_time_s"],
                 }
 
+    # Compute include counts: use direct includer counts when prefix is provided,
+    # otherwise fall back to the original tree appearance counts
+    if prefix:
+        prefixes = [prefix] if isinstance(prefix, str) else prefix
+        include_counts = compute_direct_includer_counts(graph, prefixes)
+    else:
+        include_counts = dict(graph.include_counts)
+
     # Render the graph
     root_name = Path(graph.root).name if graph.root else None
     render_graph(
@@ -114,7 +122,7 @@ def generate_html(
         edges=visible_edges,
         classified_edges=visible_classified,
         filter_result=filter_result,
-        include_counts=dict(graph.include_counts),
+        include_counts=include_counts,
         output_path=output_file,
         root_name=root_name,
         root_path=graph.root,

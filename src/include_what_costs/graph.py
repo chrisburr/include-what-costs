@@ -225,6 +225,50 @@ def _compute_depths_bfs(graph: IncludeGraph) -> None:
                 queue.append((child, depth + 1))
 
 
+def build_reverse_edges(graph: IncludeGraph) -> dict[str, set[str]]:
+    """Build child -> {parents} mapping from edges.
+
+    Args:
+        graph: The include graph.
+
+    Returns:
+        Dictionary mapping each header to the set of headers that include it.
+    """
+    child_to_parents: dict[str, set[str]] = defaultdict(set)
+    for parent, children in graph.edges.items():
+        for child in children:
+            child_to_parents[child].add(parent)
+    return child_to_parents
+
+
+def compute_direct_includer_counts(
+    graph: IncludeGraph,
+    prefixes: list[str],
+) -> dict[str, int]:
+    """Count how many prefix-matching headers directly include each header.
+
+    Args:
+        graph: The include graph.
+        prefixes: List of path prefixes to filter includers.
+
+    Returns:
+        Dictionary mapping each header to the count of prefix-matching
+        headers that directly include it.
+    """
+    prefix_matching = {
+        h for h in graph.all_headers if any(h.startswith(p) for p in prefixes)
+    }
+    child_to_parents = build_reverse_edges(graph)
+
+    counts: dict[str, int] = {}
+    for header in graph.all_headers:
+        includers = [
+            p for p in child_to_parents.get(header, set()) if p in prefix_matching
+        ]
+        counts[header] = len(includers)
+    return counts
+
+
 def parse_gcc_h_output(output: str) -> IncludeGraph:
     """Parse gcc -H output (dots indicate depth) into a graph.
 
